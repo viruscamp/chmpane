@@ -1,0 +1,397 @@
+<html>
+<head>
+<title>Microsoft's HTML Help (.chm) format</title>
+<meta name="author" content="Matthew T. Russotto" />
+
+</head>
+<body>
+<h1> Microsoft's HTML Help (.chm) format</h1>
+<h2 id="preface"> Preface</h2>
+<p>
+This is documentation on the .chm format used by Microsoft HTML Help.
+This format has been reverse engineered in the past, but as far as I
+know this is the first freely available documentation on it.  One
+Usenet message indicates that these .chm files are actually IStorage
+files documented in the Microsoft Platform SDK.  However, I have not
+been able to locate such documentation.
+</p>
+<h3>Note</h3>
+
+<p>
+The word "section" is badly overloaded in this document.  Sorry about
+that.</p>
+
+<p>
+All numbers are in hexadecimal unless otherwise indicated in the
+text.  Except in tabular listings, this will be indicated by
+$ or 0x as appropriate.  All values within the file are Intel byte
+order (little endian) unless indicated otherwise.
+</p>
+
+<h2 id="overview"> The overall format of a .chm file</h2>
+
+<p>
+The .chm file begins with a short ($38 byte) initial header.  This is
+followed by the header section table and the offset to the
+content. Collectively, this is the "header".
+</p>
+
+<p>
+The header is followed by the header sections.  There are two header
+sections.  One header section is the file directory, the other
+contains the file length and some unknown data. Immediately following
+the header sections is the content. 
+</p>
+
+<h2 id="header"> The Header</h2>
+<p>
+The header starts with the initial header, which has the following format
+</p>
+<pre>
+0000: char[4]  'ITSF'
+0004: DWORD    3 (Version number)
+0008: DWORD    Total header length, including header section table and
+               following data.
+000C: DWORD    1 (unknown)
+0010: DWORD    a timestamp.
+               Considered as a big-endian DWORD, it appears to contain
+               seconds (MSB) and fractional seconds (second byte).
+	       The third and fourth bytes may contain even more fractional
+               bits.  The 4 least significant bits in the last byte are
+               constant.
+0014: DWORD    Windows Language ID.  The two I've seen
+               $0409 = LANG_ENGLISH/SUBLANG_ENGLISH_US
+               $0407 = LANG_GERMAN/SUBLANG_GERMAN
+0018: GUID     {7C01FD10-7BAA-11D0-9E0C-00A0-C922-E6EC}
+0028: GUID     {7C01FD11-7BAA-11D0-9E0C-00A0-C922-E6EC}
+</pre>
+<p>Note: a GUID is $10 bytes, arranged as 1 DWORD, 2 WORDs, and 8 BYTEs.</p>
+
+<p>
+It is followed by the header section table, which is 2 entries, where
+each entry is $10 bytes long and has this format:
+</p>
+
+<pre>
+0000: QWORD    Offset of section from beginning of file
+0008: QWORD    Length of section
+</pre>
+
+<p>
+
+Following the header section table is 8 bytes of additional header
+data.  In Version 2 files, this data is not there and the content
+section starts immediately after the directory.
+</p>
+<pre>
+0000: QWORD    Offset within file of content section 0
+</pre>
+
+<h2 id="headersections">The Header Sections</h2>
+<h3>Header Section 0</h3>
+<p>
+This section contains the total size of the file, and not much else
+</p>
+<pre>
+0000: DWORD    $01FE (unknown)
+0004: DWORD    0 (unknown)
+0008: QWORD    File Size
+0010: DWORD    0 (unknown)
+0014: DWORD    0 (unknown)
+</pre>
+
+<h3>Header Section 1: The Directory Listing</h3>
+<p>
+The central part of the .chm file: A directory of the files and information it
+contains.  
+</p>
+<h4>Directory header</h4>
+<p>
+The directory starts with a header; its format is as follows:
+</p>
+<pre>
+0000: char[4]  'ITSP'
+0004: DWORD    Version number 1
+0008: DWORD    Length of the directory header
+000C: DWORD    $0a (unknown)
+0010: DWORD    $1000    Directory chunk size
+0014: DWORD    "Density" of quickref section, usually 2.
+0018: DWORD    Depth of the index tree
+               1 there is no index, 2 if there is one level of PMGI
+	       chunks.
+001C: DWORD    Chunk number of root index chunk, -1 if there is none
+               (though at least one file has 0 despite there being no
+	       index chunk, probably a bug.) 
+0020: DWORD    Chunk number of first PMGL (listing) chunk
+0024: DWORD    Chunk number of last PMGL (listing) chunk
+0028: DWORD    -1 (unknown)
+002C: DWORD    Number of directory chunks (total)
+0030: DWORD    Windows language ID
+0034: GUID     {5D02926A-212E-11D0-9DF9-00A0C922E6EC}
+0044: DWORD    $54 (This is the length again)
+0048: DWORD    -1 (unknown)
+004C: DWORD    -1 (unknown)
+0050: DWORD    -1 (unknown)
+</pre>
+<h4>The Listing Chunks</h4>
+<p>
+The header is directly followed by the directory chunks.  There are two
+types of directory chunks -- index chunks, and listing chunks.  The
+index chunk will be omitted if there is only one listing chunk.  A
+listing chunk has the following format:
+</p>
+<pre>
+0000: char[4]  'PMGL'
+0004: DWORD    Length of free space and/or quickref area at end of
+               directory chunk 
+0008: DWORD    Always 0. 
+000C: DWORD    Chunk number of previous listing chunk when reading
+               directory in sequence (-1 if this is the first listing chunk)
+0010: DWORD    Chunk number of next listing chunk when reading
+               directory in sequence (-1 if this is the last listing chunk)
+0014: Directory listing entries (to quickref area)  Sorted by
+      filename; the sort is case-insensitive.
+</pre>
+<p>
+The quickref area is written backwards from the end of the chunk.  One
+quickref entry exists for every n entries in the file, where n is
+calculated as 1 + (1 << quickref density).  So for density = 2, n = 5.
+</p>
+<pre>
+Chunklen-0002: WORD     Number of entries in the chunk
+Chunklen-0004: WORD     Offset of entry n from entry 0
+Chunklen-0008: WORD     Offset of entry 2n from entry 0
+Chunklen-000C: WORD     Offset of entry 3n from entry 0
+...
+</pre>
+<p>
+The format of a directory listing entry is as follows
+</p>
+<pre>
+      ENCINT: length of name
+      BYTEs: name  (UTF-8 encoded)
+      ENCINT: content section
+      ENCINT: offset
+      ENCINT: length
+</pre>
+
+<p>
+The offset is from the beginning of the content section the file is
+in, after the section has been decompressed (if appropriate).  The
+length also refers to length of the file in the section after decompression.
+</p>
+<p>
+There are two kinds of file represented in the directory: user data and
+format related files.  The files which are format-related have names which begin
+with '::', the user data files have names which begin with "/".
+</p>
+
+<h4>The Index Chunk</h4>
+<p>
+An index chunk has the following format
+</p>
+<pre>
+0000: char[4]  'PMGI'
+0004: DWORD    Length of quickref/free area at end of directory chunk
+0008: Directory index entries (to quickref/free area)
+</pre>
+<p>
+The quickref area in an PMGI is the same as in an PMGL
+</p>
+<p>
+The format of a directory index entry is as follows
+</p>
+<pre>
+      ENCINT: length of name
+      BYTEs: name  (UTF-8 encoded)
+      ENCINT: directory listing chunk which starts with name
+</pre>
+<p>
+When higher-level indexes exist (when the depth of the index tree is 3 or
+higher), presumably the upper-level indexes will contain the numbers
+of lower-level index chunks rather than listing chunks
+</p>
+
+<h4>Encoded Integers</h4>
+<p>
+An ENCINT is a variable-length integer.  The high bit of each byte
+indicates "continued to the next byte".  Bytes are stored most
+significant to least significant.  So, for example, $EA $15 is 
+(((0xEA&amp;0x7F)&lt;&lt;7)|0x15) = 0x3515.
+</p>
+
+<h2 id="content">The Content</h2>
+<p>
+In Version 3, the content typically immediately follows the header
+sections, and is at the location indicated by the DWORD following the
+header section table. In Version 2, the content immediately follows
+the header.
+
+All content section 0 locations in the directory are relative to that
+point.  The other content sections are stored WITHIN content section
+0.
+</p>
+<h3>The Namelist file</h3>
+<p>
+There exists in content section 0 and in the directory a file called
+"::DataSpace/NameList".  This file contains the names of all the
+content sections.  The format is as follows:
+</p>
+<pre>
+0000: WORD     Length of file, in words
+0002: WORD     Number of entries in file
+
+Each entry:
+0000: WORD     Length of name in words, excluding terminating null
+0002: WORD     Double-byte characters
+xxxx: WORD     0
+</pre>
+<p>
+Yes, the names have a length word AND are null terminated; sort of a
+belt-and-suspenders approach.  The coding system is likely UTF-16 (little endian).
+</p>
+<p>
+The section names seen so far are
+</p>
+<ul>
+<li>Uncompressed</li>
+<li>MSCompressed</li>
+</ul>
+<p>
+"Uncompressed" is self-explanatory.  The section "MSCompressed" is
+compressed with Microsoft's LZX algorithm.
+</p>
+<h3>The Section Data</h3>
+<p>
+For each section other than 0, there exists a file called
+'::DataSpace/Storage/&lt;Section Name&gt;/Content'.  This file contains the
+compressed data for the section.  So, conceptually,
+getting a file from a nonzero section is a multi-step process.  First
+you must get the content file from section 0.  Then you decompress (if
+appropriate) the section.  Then you get the desired file from your decompressed section. 
+</p>
+<h3>Other section format-related files</h3>
+<p>
+There are several other files associated with the sections
+</p>
+<ul>
+<li>
+::DataSpace/Storage/&lt;SectionName&gt;/ControlData
+<p>
+This file contains $20 bytes of information on the compression.
+
+The information is partially known:
+</p>
+<pre>
+0000: DWORD    Number of DWORDs following 'LZXC', must be 6 if version is 2
+0004: ASCII    'LZXC'  Compression type identifier
+0008: DWORD    Version (Must be <=2)
+000C: DWORD    The LZX reset interval
+0010: DWORD    The window size
+0014: DWORD    The cache size
+0018: DWORD    0 (unknown)
+</pre>
+<p>
+Reset interval, window size, and cache size are in bytes if version is
+1, $8000-byte blocks if version is 2.
+</p>
+</li>
+<li>::DataSpace/Storage/&lt;SectionName&gt;/SpanInfo
+<p>
+This file contains a quadword containing the uncompressed length of
+the section.
+</p>
+</li>
+<li>::DataSpace/Storage/&lt;SectionName&gt;/Transform/List
+<p>
+It appears this file was intended to contain a list of GUIDs belonging
+to methods of decompressing (or otherwise transforming) the section.
+However, it actually contains only half of the string representation
+of a GUID, apparently because it was sized for characters but contains
+wide characters.
+</p>
+</li>
+</ul>
+
+<h2 id="compression">Appendix: The Compression</h2>
+<p>
+The compressed sections are compressed using LZX, a compression
+method Microsoft also uses for its cabinet files.  To ensure this, check the
+second DWORD of compression info in the ControlData file for the
+section &mdash; it should be 'LZXC'.  To decompress, first read the file
+"::DataSpace/Storage/&lt;SectionName&gt;/Transform/{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable". 
+This reset table has the following format
+</p>
+<pre>
+0000: DWORD    2     unknown (possibly a version number)
+0004: DWORD    Number of entries in reset table
+0008: DWORD    8     Size of table entry (bytes)
+000C: DWORD    $28   Length of table header (area before table entries)
+0010: QWORD    Uncompressed Length
+0018: QWORD    Compressed Length
+0020: QWORD    0x8000 block size for locations below
+0028: QWORD    0 (zeroth entry of table)
+0030: QWORD    location in compressed data of 1st block boundary in
+               uncompressed data
+
+Repeat to end of file
+</pre>
+<p>
+Now you can finally obtain the section (from its Content file).  The
+window size for the LZX compression is 16 (decimal) on all the files
+seen so far.  This is specified by the DWORD at $10 in the ControlData
+file (but note that DWORD gives the window size in 0x8000-byte blocks,
+not the LZX code for the window size)
+</p>
+<p>
+The rule that the input bit-stream is to be re-aligned to a 16-bit boundary
+after $8000 output characters have been processed IS in effect,
+despite this LZX not being part of a CAB file.  The reset table tells
+you when this was done, though there is no need for that
+during decompression; you can just keep track of the number of output
+characters.  Furthermore, while this does not appear to be documented
+in the LZX format, the uncompressed stream is padded to an $8000
+byte boundary.
+</p>
+<p>
+There is one change from LZX as defined by Microsoft: After each
+LZX reset interval (defined in the ControlData file, but in
+practice equal to the window size) of compressed data is
+processed, the LZX state is fully reset, as if an entirely new file
+was being encoded.  This allows semi-random access to the compressed
+data; you can start reading on any reset interval boundary using the
+reset interval size and the reset table.
+</p>
+<p>
+<em>Note:</em><br>
+Earlier versions of this document stated that the reset interval only
+reset the Huffman tables and required outputting the 1-bit header
+again.  This was erroneous.  The Lempel Ziv state is reset as well.  In
+practice, a decoder works just as well with the incorrect assumption,
+but encoding a file with match positions which refer to a time before
+the most recent LZX reset causes crashes on decoding.
+</p>
+<hr />
+<h2>Acknowledgements</h2>
+<p>The following people in (no particular order) have submitted
+information which has helped correct and close the gaps in this
+document.</p>
+<ul>
+<li>Peter Ferrie (peter_ferrie at hotmail.com) <a
+href="http://pferrie.tripod.com">Web Site</a></li>
+<li>Pabs (pabs at zip.to) who also runs the <a href="http://savannah.nongnu.org/projects/chmspec">CHM Spec page</a>.</li>
+</ul>
+<p>And others I have not been able to reach.</p>
+<hr />
+<p>
+Copyright 2001-2003 Matthew T. Russotto
+<br />
+</p>
+<p>
+You may freely copy and distribute unmodified copies of this file, or
+copies where the only modification is a change in line endings,
+padding after the html end tag, coding system, or any combination
+thereof.  The original is in ASCII with Unix line endings. 
+</p>
+</body>
+</html>

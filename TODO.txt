@@ -1,0 +1,9 @@
+/swing ui
+	/tree + /content + /back/forth + // font-size +
+	linkback + search? +  print? + annotation/edit?
+swt ui
+	...
+eclipse plugin
+	outline + browser + backforth + CHM project + build/export
+eclipse rcp
+	...
