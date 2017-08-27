@@ -4,7 +4,9 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
 import junit.framework.TestCase;
+import org.junit.Ignore;
 
+@Ignore
 public class BitStreamTest extends TestCase {
 
 	public void testEnsure() throws DataFormatException, IOException {

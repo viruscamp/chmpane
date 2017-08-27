@@ -3,7 +3,9 @@ package cn.rui.chm;
 import java.io.InputStream;
 
 import junit.framework.TestCase;
+import org.junit.Ignore;
 
+@Ignore
 public class CHMFileTest extends TestCase {
 
 	public void testList() throws Exception {
