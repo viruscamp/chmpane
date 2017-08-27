@@ -209,6 +209,10 @@ public class CHMFile implements Closeable {
 		ListingEntry entry = entryCache.get(name);
 		if (entry != null)
 			return entry;
+
+		entry = entryCache.get(name.toLowerCase());
+		if (entry != null)
+			return entry;
 		
 		if (rootIndexChunkNo >= 0 && resources == null)
 			entry = resolveIndexedEntry(name, rootIndexChunkNo, 0);
