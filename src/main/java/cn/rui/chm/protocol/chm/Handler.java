@@ -42,6 +42,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLStreamHandler;
+import java.net.URLStreamHandlerFactory;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.logging.Logger;
@@ -54,9 +55,22 @@ import cn.rui.chm.CHMFile;
 public class Handler extends URLStreamHandler {
 	
 	static {
-		String pkgs = System.getProperty("java.protocol.handler.pkgs", "cn.rui.chm.protocol");
-		if (pkgs.indexOf("cn.rui") < 0) pkgs += "|cn.rui";
-		System.setProperty("java.protocol.handler.pkgs", pkgs);
+		//String pkgs = System.getProperty("java.protocol.handler.pkgs", "cn.rui.chm.protocol");
+		//if (pkgs.indexOf("cn.rui") < 0) pkgs += "|cn.rui";
+		//System.setProperty("java.protocol.handler.pkgs", pkgs);
+
+		URL.setURLStreamHandlerFactory(new HandlerFactory());
+	}
+
+	static class HandlerFactory implements URLStreamHandlerFactory {
+		public URLStreamHandler createURLStreamHandler(String protocol) {
+			if ("chm".equals(protocol)) {
+				return new Handler();
+			} else {
+
+			}
+			return null;
+		}
 	}
 
 	private static Logger log = Logger.getLogger(Handler.class.getName());

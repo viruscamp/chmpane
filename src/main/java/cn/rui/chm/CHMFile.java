@@ -44,11 +44,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.logging.Logger;
 
@@ -119,8 +115,10 @@ public class CHMFile implements Closeable {
 		lang = in.read32();
 		log.info("CHM ITSF language " + WindowsLanguageID.getLocale(lang));
 	
-		in.readGUID();	//.equals("7C01FD10-7BAA-11D0-9E0C-00A0-C922-E6EC");
-		in.readGUID();	//.equals("7C01FD11-7BAA-11D0-9E0C-00A0-C922-E6EC");
+		String guid = in.readGUID();	//.equals("7C01FD10-7BAA-11D0-9E0C-00A0-C922-E6EC");
+		log.info("guid = " + guid);
+		UUID uuid = in.readUUID();	//.equals("7C01FD11-7BAA-11D0-9E0C-00A0-C922-E6EC");
+		log.info("uuid = " + uuid);
 		
 		long off0 = in.read64();
 		long len0 = in.read64();

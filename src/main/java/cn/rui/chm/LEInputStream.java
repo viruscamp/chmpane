@@ -41,6 +41,7 @@ import java.io.EOFException;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.UUID;
 
 /**
  * Little Endian Input Stream
@@ -108,6 +109,21 @@ class LEInputStream extends FilterInputStream {
         return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24) 
         		+ (b5 << 32) + (b6 << 40) + (b7 << 48) + (b8 << 56));
 	}
+
+	public long read64BE() throws IOException {
+		byte[] buf = new byte[Long.SIZE / Byte.SIZE];
+		readFully(buf);
+		return bytesToLong(buf);
+	}
+
+	public static long bytesToLong(byte[] b) {
+		long result = 0;
+		for (int i = 0; i < 8; i++) {
+			result <<= 8;
+			result |= (b[i] & 0xFF);
+		}
+		return result;
+	}
 	
 	public String readUTF8(int len) throws IOException {
 		byte[]buf = new byte[len];
@@ -128,6 +144,16 @@ class LEInputStream extends FilterInputStream {
 			"-" + toHexString(read(), 2) + toHexString(read(), 2) +
 			"-" + toHexString(read(), 2) + toHexString(read(), 2) +
 			"-" + toHexString(read(), 2) + toHexString(read(), 2);
+	}
+
+	public UUID readUUID() throws IOException {
+		int p1 = read32();
+		int p2 = read16();
+		int p3 = read16();
+		long p4 = read64BE();
+		long mostSigBits = ((long)p1 << 32) + ((long)p2 << 16) + (long)p3;
+		long leastSigBits = p4;
+		return new UUID(mostSigBits, leastSigBits);
 	}
 	
 	private String toHexString(int v, int len) {

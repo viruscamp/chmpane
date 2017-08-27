@@ -90,19 +90,15 @@ class SiteMapFactory extends HTMLFactory implements DocumentListener {
 			SwingUtilities.invokeLater(new Runnable() {
 				public void run() {
 					tree.expandPath(new TreePath(root));
-				}
-			});
-			if (root.getChildCount() > 0 ) {
-				DefaultMutableTreeNode first = (DefaultMutableTreeNode) root.getChildAt(0);
-				final Object obj = first.getUserObject();
-				if (obj != null && obj instanceof Element) {
-					SwingUtilities.invokeLater(new Runnable() {
-						public void run() {
+					if (root.getChildCount() > 0 ) {
+						DefaultMutableTreeNode first = (DefaultMutableTreeNode) root.getChildAt(0);
+						final Object obj = first.getUserObject();
+						if (obj != null && obj instanceof Element) {
 							pane.setContentPage((String) ((Element) obj).getAttributes().getAttribute("Local"));
 						}
-					});
+					}
 				}
-			}
+			});
 		}
 	}
 
