@@ -13,6 +13,8 @@
 	<modules>
 		<module>libchmpane</module>
 		<module>chmpane</module>
+		<module>chmpane-springmvc</module>
+		<module>chmpane-springmvc-demo</module>
 	</modules>
 
 	<properties>

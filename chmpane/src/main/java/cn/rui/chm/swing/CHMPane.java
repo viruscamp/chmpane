@@ -37,13 +37,7 @@
  */
 package cn.rui.chm.swing;
 
-import java.awt.BorderLayout;
-import java.awt.Cursor;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.Toolkit;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.InputEvent;
@@ -94,6 +88,8 @@ import cn.rui.chm.protocol.chm.Handler;
 
 public class CHMPane extends JPanel implements HyperlinkListener {
 
+	public static final Icon OPEN = new ImageIcon(CHMPane.class.getResource("resource/open.png"));
+
 	public static final Icon BACKWARD = new ImageIcon(CHMPane.class.getResource("resource/backward.png"));
 	
 	public static final Icon FORWARD = new ImageIcon(CHMPane.class.getResource("resource/forward.png"));
@@ -117,6 +113,7 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 	JToolBar toolbar;
 	Stack<Visit> forwards = new Stack<Visit>();
 	Stack<Visit> backwards = new Stack<Visit>();
+	JButton openBtn;
 	JButton homeBtn;
 	JButton backwardBtn;
 	JButton forwardBtn;
@@ -248,6 +245,7 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 	private void createToolbar() {
 		add(toolbar = new JToolBar(), BorderLayout.NORTH); {
 			toolbar.setFloatable(false);
+
 			toolbar.add(homeBtn = new JButton(HOME));
 			homeBtn.setBorder(BorderFactory.createEtchedBorder());
 			homeBtn.setEnabled(false);
@@ -257,6 +255,30 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 					setContentPage(home, null);
 				}
 			});
+
+			toolbar.add(Box.createHorizontalStrut(3));
+			toolbar.add(openBtn = new JButton());
+			openBtn.setBorder(BorderFactory.createEtchedBorder());
+			openBtn.setEnabled(true);
+			openBtn.setToolTipText("Open");
+			openBtn.addActionListener(new ActionListener(){
+				public void actionPerformed(ActionEvent e) {
+					Window w = SwingUtilities.getWindowAncestor(openBtn);
+					w.setVisible(false);
+					w.dispose();
+					new Thread() {
+						@Override
+						public void run() {
+							try {
+								main(new String[]{});
+							} catch (Exception e1) {
+								e1.printStackTrace();
+							}
+						}
+					}.start();
+				}
+			});
+
 			toolbar.add(Box.createHorizontalStrut(3));
 			toolbar.add(backwardBtn = new JButton(BACKWARD));
 			backwardBtn.setBorder(BorderFactory.createEtchedBorder());
@@ -268,6 +290,7 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 						setContentPage(backwards.pop(), backwardBtn);
 				}
 			});
+
 			toolbar.add(Box.createHorizontalStrut(3));
 			toolbar.add(forwardBtn = new JButton(FORWARD));
 			forwardBtn.setBorder(BorderFactory.createEtchedBorder());
@@ -279,6 +302,7 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 						setContentPage(forwards.pop(), forwardBtn);
 				}
 			});
+
 			toolbar.add(Box.createHorizontalStrut(3));
 			toolbar.add(fontSizeBtn = new JButton(FONTSIZE));
 			fontSizeBtn.setBorder(BorderFactory.createEtchedBorder());
@@ -618,21 +642,26 @@ public class CHMPane extends JPanel implements HyperlinkListener {
             } catch (BadLocationException ble) {}
         }
     }
+
+    private static String openFile() {
+		JFileChooser fc = new JFileChooser(new File(""));
+		fc.setFileFilter(new FileFilter() {
+			public boolean accept(File f) {
+				return f.isDirectory() || f.getName().toLowerCase().endsWith(".chm");
+			}
+			public String getDescription() {
+				return "Compiled HTML File (*.chm)";
+			}
+		});
+		if (fc.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
+			return fc.getSelectedFile().getAbsolutePath();
+		return null;
+	}
 	
 	public static void main(String[]args) throws Exception {
 		String filename = null;
 		if (args.length == 0) {
-			JFileChooser fc = new JFileChooser(new File(""));
-			fc.setFileFilter(new FileFilter() {
-				public boolean accept(File f) {
-					return f.isDirectory() || f.getName().toLowerCase().endsWith(".chm");
-				}
-				public String getDescription() {
-					return "Compiled HTML File (*.chm)";
-				}
-			});
-			if (fc.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
-				filename = fc.getSelectedFile().getAbsolutePath();
+			filename = openFile();
 		} else {
 			filename = args[0];
 			// TODO chmpane filename /html-file#section

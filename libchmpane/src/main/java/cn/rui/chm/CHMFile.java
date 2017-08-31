@@ -37,13 +37,7 @@
  */
 package cn.rui.chm;
 
-import java.io.ByteArrayInputStream;
-import java.io.Closeable;
-import java.io.EOFException;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.logging.Logger;
@@ -52,8 +46,9 @@ import java.util.logging.Logger;
  * @author Rui Shen
  * 
  * CHMFile
- * @see http://www.kyz.uklinux.net/libmspack/doc/structmschmd__header.html
- * @see http://www.nongnu.org/chmspec/latest/Internal.html
+ * @see <a href="http://www.russotto.net/chm/chmformat.html">Microsoft's HTML Help (.chm) format</a>
+ * @see <a href="http://www.nongnu.org/chmspec/latest/Internal.html">Unofficial (Preliminary) HTML Help Specification</a>
+ * @see <a href="http://www.cabextract.org.uk/libmspack/doc/structmschmd__header.html">mschmd_header Struct Reference</a>
  */
 public class CHMFile implements Closeable {
     
@@ -91,12 +86,16 @@ public class CHMFile implements Closeable {
 	
 	private Section[] sections = new Section[]{ new Section() }; // for section 0
 
-	private String filepath;
+	private File file;
+
+	public CHMFile(String filepath) throws IOException, DataFormatException {
+		this(new File(filepath));
+	}
 	/**
 	 * We need random access to the source file
 	 */
-	public CHMFile(String filepath) throws IOException, DataFormatException {
-		fileAccess = new RandomAccessFile(this.filepath = filepath, "r");
+	public CHMFile(File file) throws IOException, DataFormatException {
+		fileAccess = new RandomAccessFile(this.file = file, "r");
 		
 		/** Step 1. CHM header  */
 		// The header length is 0x60 (96)	
@@ -222,7 +221,7 @@ public class CHMFile implements Closeable {
 			log.warning("Resolved using lowercase name " + name);
 		}
 		
-		if (entry == null) throw new FileNotFoundException(filepath + "#" + name);
+		if (entry == null) throw new FileNotFoundException(file + "#" + name);
 		
 		return entry;
 	}
@@ -271,7 +270,8 @@ public class CHMFile implements Closeable {
 		} else { // process the listing chunk, and cache entries in the whole chunk
 			LEInputStream in = new LEInputStream(
 					createInputStream(chunkOffset + chunkNo * chunkSize, chunkSize));
-			if (! in.readUTF8(4).equals("PMGL") ) 
+			String chunkMagic = in.readUTF8(4);
+			if (!("PMGL".equals(chunkMagic)))
 				throw new DataFormatException("Listing Chunk magic mismatch, should be 'PMGL'");
 			int freeSpace = in.read32(); // Length of free space and/or quickref area at end of directory chunk
 			in.read32(); // = 0;
@@ -306,7 +306,7 @@ public class CHMFile implements Closeable {
 			name = getSiteMap();
 		ListingEntry entry = resolveEntry(name);
 		if (entry == null)
-			throw new FileNotFoundException(filepath + "#" + name);
+			throw new FileNotFoundException(file + "#" + name);
 		Section section = sections[entry.section];
 		return section.resolveInputStream(entry.offset, entry.length);
 	}
@@ -314,7 +314,7 @@ public class CHMFile implements Closeable {
 	/**
 	 * Get the name of the resources in the CHM.
 	 * Caches perform better when iterate the CHM using order of this returned list.
-	 * @see resolveIndexEntry(String name, int chunkNo, int level)
+	 * @see CHMFile#resolveIndexedEntry(String name, int chunkNo, int level)
 	 * TODO: some chunk will be read twice, one in resolveIndexEntry, one here, fix it!
 	 */
 	public synchronized List<String> list() throws IOException {
@@ -350,7 +350,7 @@ public class CHMFile implements Closeable {
 	
 	/**
 	 * The sitemap file, usually the .hhc file.
-	 * @see http://www.nongnu.org/chmspec/latest/Sitemap.html#HHC
+	 * @see <a href="http://www.nongnu.org/chmspec/latest/Sitemap.html#HHC">HHC format</a>
 	 */
 	public String getSiteMap() throws IOException {
 		if (resources == null)
