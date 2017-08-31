@@ -84,7 +84,7 @@ public class ChmController {
     public void file(@PathVariable("path") String path, HttpServletRequest request,
                       HttpServletResponse response) throws IOException {
         String uri = (String)request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
-        String filename = uri.substring(path.length() + 2);
+        String filename = uri.substring(path.length() + 1);
         CHMFile chm = getChm(path);
         if (chm == null) {
             response.sendError(HttpStatus.NOT_FOUND.value(), "no chm file mapping to " + path);
