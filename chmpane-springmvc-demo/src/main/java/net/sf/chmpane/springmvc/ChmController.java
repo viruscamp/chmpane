@@ -49,18 +49,15 @@ public class ChmController {
         if (chm == null) {
             return null;
         }
-        return "<!DOCTYPE html>\n" +
-                "<html lang='en'>\n" +
+        return "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n" +
                 "<head>\n" +
                 "    <meta charset='UTF-8'>\n" +
                 "    <title>CHM</title>\n" +
                 "</head>\n" +
-                "<body>\n" +
                 "<frameset cols='20%,*'>\n" +
-                "    　　<frame name='sitemap' src='sitemap' />\n" +
-                "    　　<frame name='content' />\n" +
+                "    <frame name='sitemap' src='sitemap.html' />\n" +
+                "    <frame name='content' />\n" +
                 "</frameset>\n" +
-                "</body>\n" +
                 "</html>";
     }
 
@@ -160,7 +157,7 @@ public class ChmController {
     private void siteMapItemToHtml(SiteMap.Item item, StringBuilder sb) {
         if (item.getName() != null) {
             if (item.getLocal() != null) {
-                sb.append("<li><a href='").append(item.getLocal()).append("'>").append(item.getName()).append("</a>\n");
+                sb.append("<li><a target='content' href='").append(item.getLocal()).append("'>").append(item.getName()).append("</a>\n");
             } else {
                 sb.append("<li>").append(item.getName()).append("\n");
             }
