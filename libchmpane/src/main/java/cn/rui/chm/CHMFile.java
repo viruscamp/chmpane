@@ -78,7 +78,9 @@ public class CHMFile implements Closeable {
 
 	private Map<String, ListingEntry> entryCache;
 	private List<String> resources;
-	private String siteMap;
+	private String siteMapName;
+
+	private SiteMap siteMap;
 
 	private LazyLoadChunks lazyLoadChunks;
 	class LazyLoadChunks {
@@ -198,8 +200,8 @@ public class CHMFile implements Closeable {
 						if (entry.name.charAt(0) == '/') {
 							resources.add(entry.name); // TODO lock needed
 							if (entry.name.endsWith(".hhc")) { // .hhc entry is the navigation file
-								siteMap = entry.name;
-								log.info("CHM sitemap " + siteMap);
+								siteMapName = entry.name;
+								log.info("CHM sitemap " + siteMapName);
 							}
 						}
 					}
@@ -343,7 +345,7 @@ public class CHMFile implements Closeable {
 		int lang2 = in.read32(); // language code
 		log.info("CHM ITSP language " + WindowsLanguageID.getLocale(lang2));
 
-		lazyLoadChunks = new LazyLoadChunks(rootIndexChunkNo, rootIndexChunkNo);
+		lazyLoadChunks = new LazyLoadChunks(rootIndexChunkNo, totalChunks);
 
 		in.readGUID(); //.equals("5D02926A-212E-11D0-9DF9-00A0-C922-E6EC"))
 		in.read32(); // = x54
@@ -420,7 +422,7 @@ public class CHMFile implements Closeable {
 	 */
 	public InputStream getResourceAsStream(String name) throws IOException {
 		if (name == null || name.length() == 0)
-			name = getSiteMap();
+			name = getSiteMapName();
 		ListingEntry entry = resolveEntry(name);
 		if (entry == null)
 			throw new FileNotFoundException(file + "#" + name);
@@ -440,21 +442,42 @@ public class CHMFile implements Closeable {
 	 * The sitemap file, usually the .hhc file.
 	 * @see <a href="http://www.nongnu.org/chmspec/latest/Sitemap.html#HHC">HHC format</a>
 	 */
-	public String getSiteMap() throws IOException {
+	public String getSiteMapName() throws IOException {
+		if (siteMapName != null) {
+			return siteMapName;
+		}
+		list();
+		return siteMapName;
+	}
+
+	public SiteMap getSiteMap() throws IOException {
 		if (siteMap != null) {
 			return siteMap;
 		}
-		list();
-		return siteMap;
+		String filename = getSiteMapName();
+		if (filename == null) {
+			return null;
+		}
+		InputStream is = getResourceAsStream(filename);
+		if (is == null) {
+			return null;
+		}
+		SiteMap sitemap = new SiteMap(is);
+		this.siteMap = sitemap;
+		return sitemap;
 	}
 
 	/**
 	 * After close, the object can not be used any more.
 	 */
 	public void close() throws IOException {
+		lazyLoadChunks = null;
+
 		entryCache = null;
-		sections = null;
 		resources = null;
+		siteMapName = null;
+
+		sections = null;
 		if (fileAccess != null) {
 			fileAccess.close();
 			fileAccess = null;
@@ -520,7 +543,7 @@ public class CHMFile implements Closeable {
 //			cachedBlocks = new byte[resetInterval][blockSize];
 //			cachedResetBlockNo = -1;
 
-			ListingEntry entry = entryCache.get("::DataSpace/Storage/MSCompressed/Content");
+			ListingEntry entry = resolveEntry("::DataSpace/Storage/MSCompressed/Content");
 			if ( entry == null )
 				throw new DataFormatException("LZXC missing content");
 			if (compressedLength != entry.length)

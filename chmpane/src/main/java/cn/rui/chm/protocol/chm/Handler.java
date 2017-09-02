@@ -134,6 +134,12 @@ public class Handler extends URLStreamHandler {
 		}
 		return url;
 	}
+	public static CHMFile getCHMFile(String host) {
+		return files.get(host);
+	}
+	public static CHMFile getCHMFile(URL url) {
+		return getCHMFile(url.getHost());
+	}
 	
 	public static void close(URL url) throws IOException {
 		synchronized (files) {

@@ -133,17 +133,21 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 		split.setDividerLocation(200);
 		split.setDividerSize(2);
 		add(split, BorderLayout.CENTER);
+
+		String siteMapName = Handler.getCHMFile(baseURL).getSiteMapName();
 		
 		factory = new SiteMapFactory(this);
-		siteMap.setEditorKitForContentType("text/html", new HTMLEditorKit() {
-			public ViewFactory getViewFactory() {
-				return factory;
-			}
-		});
-		siteMap.setPage(baseURL);
-		siteMap.setEditable(false);
-		siteMap.addHyperlinkListener(this);
-		siteMap.getDocument().addDocumentListener(factory);
+		if (siteMapName != null) {
+			siteMap.setEditorKitForContentType("text/html", new HTMLEditorKit() {
+				public ViewFactory getViewFactory() {
+					return factory;
+				}
+			});
+			siteMap.setPage(baseURL + siteMapName);
+			siteMap.setEditable(false);
+			siteMap.addHyperlinkListener(this);
+			siteMap.getDocument().addDocumentListener(factory);
+		}
 		
 		content.setEditorKitForContentType("text/html", new HTMLEditorKit() {
 			// this method is copied from its super.createDefaultDocument()
