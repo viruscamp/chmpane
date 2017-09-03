@@ -1,13 +1,18 @@
 package cn.rui.chm;
 
-import lombok.*;
-import org.xml.sax.*;
-import org.xml.sax.helpers.DefaultHandler;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
 import org.ccil.cowan.tagsoup.jaxp.SAXParserImpl;
+import org.xml.sax.Attributes;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
 
 import javax.xml.parsers.SAXParser;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Reader;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -26,34 +31,37 @@ public class SiteMap {
     public SiteMap(String content) throws IOException {
         this();
         try {
-            getSAXParser().parse(content, new SiteMapSaxHandler());
+            saxParser.parse(content, new SiteMapSaxHandler());
         } catch (SAXException ex) {
             log.throwing("SiteMap", "SiteMap(String content)", ex);
+        }
+    }
+
+    public SiteMap(Reader reader) throws IOException {
+        this();
+        try {
+            saxParser.parse(new InputSource(reader), new SiteMapSaxHandler());
+        } catch (SAXException ex) {
+            log.throwing("SiteMap", "SiteMap(Reader reader)", ex);
         }
     }
 
     public SiteMap(InputStream is) throws IOException {
         this();
         try {
-            getSAXParser().parse(new InputSource(is), new SiteMapSaxHandler());
+            saxParser.parse(new InputSource(is), new SiteMapSaxHandler());
         } catch (SAXException ex) {
             log.throwing("SiteMap", "SiteMap(InputStream is)", ex);
         }
     }
 
-    static class SAXParserHolder {
-        static SAXParser saxParser;
-        static {
-            try {
-                saxParser = SAXParserImpl.newInstance(null);
-            } catch (Exception ex) {
-                log.throwing("SiteMap.SAXParserHolder", "static init", ex);
-            }
+    private static SAXParser saxParser;
+    static {
+        try {
+            saxParser = SAXParserImpl.newInstance(null);
+        } catch (Exception ex) {
+            log.throwing("SiteMap", "static init", ex);
         }
-    }
-
-    private static SAXParser getSAXParser() throws SAXException {
-        return SAXParserHolder.saxParser;
     }
 
     @EqualsAndHashCode
@@ -88,6 +96,7 @@ public class SiteMap {
 
     class SiteMapSaxHandler extends DefaultHandler {
         private Stack<Item> stack;
+        private boolean closeUlToBeDetermined = false;
 
         SiteMapSaxHandler() {
             super();
@@ -99,6 +108,17 @@ public class SiteMap {
         public void startElement (String uri, String localName,
                                   String qName, Attributes attributes)
                 throws SAXException {
+            if (closeUlToBeDetermined) {
+                closeUlToBeDetermined = false;
+                if ("ul".equalsIgnoreCase(localName)) {
+                    // do nothing and return
+                    return;
+                } else {
+                    closeUl();
+                    // continue
+                }
+            }
+
             if ("li".equalsIgnoreCase(localName)) {
                 Item item = new Item();
                 if (stack.peek().items == null) {
@@ -133,6 +153,12 @@ public class SiteMap {
         @Override
         public void endElement (String uri, String localName, String qName)
                 throws SAXException {
+            if (closeUlToBeDetermined) {
+                closeUlToBeDetermined = false;
+                closeUl();
+                // continue
+            }
+
             if ("li".equalsIgnoreCase(localName)) {
                 // should not occur
             } else if ("object".equalsIgnoreCase(localName)) {
@@ -152,11 +178,15 @@ public class SiteMap {
             } else if ("param".equalsIgnoreCase(localName)) {
                 // do nothing
             } else if ("ul".equalsIgnoreCase(localName)) {
-                if (stack.peek().items == null) {
-                    stack.pop();
-                }
+                closeUlToBeDetermined = true;
+            }
+        }
+
+        private void closeUl() {
+            if (stack.peek().items == null) {
                 stack.pop();
             }
+            stack.pop();
         }
     }
 }

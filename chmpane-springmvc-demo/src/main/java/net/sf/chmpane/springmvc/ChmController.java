@@ -38,20 +38,52 @@ public class ChmController {
         pathToChm.remove(path);
     }
 
-    private CHMFile getChm(String path) {
-        return pathToChm.get(path);
+    @ResponseStatus(value = HttpStatus.NOT_FOUND)
+    public static class ResourceNotFoundException extends RuntimeException {
+        public ResourceNotFoundException() {
+            super();
+        }
+        public ResourceNotFoundException(String message) {
+            super(message);
+        }
     }
 
-    @RequestMapping(value = "/{path}", method = RequestMethod.GET, produces = "text/html")
+    private CHMFile getChm(String path) {
+        CHMFile chm = pathToChm.get(path);
+        if (chm == null) {
+            throw new ResourceNotFoundException("no chm file mapping to " + path);
+        }
+        return chm;
+    }
+
+    /*
+    @RequestMapping(value = "/{path}/iframe", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
+    @ResponseBody
+    public String iframe(@PathVariable("path") String path) throws IOException {
+        CHMFile chm = getChm(path);
+        return "<!DOCTYPE html>" +
+                "<html>\n" +
+                "<head>\n" +
+                "    <meta charset='utf-8'>\n" +
+                "    <title>CHM</title>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "    <iframe height='100%' width='20%' style='float:left' name='sitemap' src='sitemap.html'></iframe>\n" +
+                "    <iframe height='100%' style='overflow:hidden' name='content'><iframe>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+    */
+
+    @RequestMapping(value = "/{path}", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
     @ResponseBody
     public String index(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        if (chm == null) {
-            return null;
-        }
-        return "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n" +
+        return "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \n" +
+                "    \"http://www.w3.org/TR/html4/frameset.dtd\">" +
+                "<html>\n" +
                 "<head>\n" +
-                "    <meta charset='UTF-8'>\n" +
+                "    <meta charset='utf-8'>\n" +
                 "    <title>CHM</title>\n" +
                 "</head>\n" +
                 "<frameset cols='20%,*'>\n" +
@@ -61,40 +93,19 @@ public class ChmController {
                 "</html>";
     }
 
-    @RequestMapping(value = "/{path}/list.{ext}", method = RequestMethod.GET)
+    @RequestMapping(value = "/{path}/list", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
     @ResponseBody
-    public Object list(@PathVariable("path") String path, @PathVariable("ext") String ext,
-                                 HttpServletResponse response) throws IOException {
-        if ("json".equals(ext)) {
-            return listJson(path, response);
-        } else if ("htm".equals(ext) || "html".equals(ext)) {
-            return listHtml(path, response);
-        }
-        response.sendError(HttpStatus.NOT_FOUND.value(), "unknown ext: " + ext);
-        return null;
-    }
-
-    @RequestMapping(value = "/{path}/list", method = RequestMethod.GET, produces = "application/json")
-    @ResponseBody
-    public List<String> listJson(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
+    public List<String> listJson(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        if (chm == null) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no chm file mapping to " + path);
-            return null;
-        }
         return chm.list();
     }
 
-    @RequestMapping(value = "/{path}/list", method = RequestMethod.GET, produces = "text/html")
+    @RequestMapping(value = "/{path}/list", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
     @ResponseBody
-    public String listHtml(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
+    public String listHtml(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        if (chm == null) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no chm file mapping to " + path);
-            return null;
-        }
         StringBuilder sb = new StringBuilder();
-        sb.append("<!DOCTYPE html><html><head></head><body><ul>\n");
+        sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'></head><body><ul>\n");
         for (String filename : chm.list()) {
             sb.append("<li><a href='." + filename + "'>" + filename + "</a></li>\n");
         }
@@ -102,53 +113,29 @@ public class ChmController {
         return sb.toString();
     }
 
-    @RequestMapping(value = "/{path}/sitemap.{ext}", method = RequestMethod.GET)
-    @ResponseBody
-    public Object siteMap(@PathVariable("path") String path, @PathVariable("ext") String ext,
-                       HttpServletResponse response) throws IOException {
-        if ("json".equals(ext)) {
-            return siteMapJson(path, response);
-        } else if ("htm".equals(ext) || "html".equals(ext)) {
-            return siteMapHtml(path, response);
-        } else if ("hhc".equals(ext)) {
-            siteMapHhc(path, response);
-            return null;
-        }
-        response.sendError(HttpStatus.NOT_FOUND.value(), "unknown ext: " + ext);
-        return null;
-    }
-
-    @RequestMapping(value = "/{path}/sitemap", method = RequestMethod.GET, produces = "application/json")
-    @ResponseBody
-    public SiteMap siteMapJson(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
-        CHMFile chm = getChm(path);
-        if (chm == null) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no chm file mapping to " + path);
-            return null;
-        }
+    private SiteMap getSiteMap(CHMFile chm) throws IOException {
         SiteMap sitemap = chm.getSiteMap();
         if (sitemap == null) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no sitemap in the chm file");
-            return null;
+            throw new ResourceNotFoundException("no sitemap in the chm file");
         }
         return sitemap;
     }
 
-    @RequestMapping(value = "/{path}/sitemap", method = RequestMethod.GET, produces = "text/html")
+    @RequestMapping(value = "/{path}/sitemap", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
     @ResponseBody
-    public String siteMapHtml(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
+    public SiteMap siteMapJson(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        if (chm == null) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no chm file mapping to " + path);
-            return null;
-        }
-        SiteMap sitemap = chm.getSiteMap();
-        if (sitemap == null) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no sitemap in the chm file");
-            return null;
-        }
+        SiteMap sitemap = getSiteMap(chm);
+        return sitemap;
+    }
+
+    @RequestMapping(value = "/{path}/sitemap", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
+    @ResponseBody
+    public String siteMapHtml(@PathVariable("path") String path) throws IOException {
+        CHMFile chm = getChm(path);
+        SiteMap sitemap = getSiteMap(chm);
         StringBuilder sb = new StringBuilder();
-        sb.append("<!DOCTYPE html><html><head></head><body>\n");
+        sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>\n");
         siteMapItemToHtml(sitemap.getRoot(), sb);
         sb.append("</body></html>");
         return sb.toString();
@@ -177,10 +164,6 @@ public class ChmController {
     @RequestMapping(value = "/{path}/sitemap.hhc", method = RequestMethod.GET)
     public void siteMapHhc(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
         CHMFile chm = getChm(path);
-        if (chm == null) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no chm file mapping to " + path);
-            return;
-        }
         file(chm, chm.getSiteMapName(), response);
     }
 
@@ -188,10 +171,6 @@ public class ChmController {
     public void file(@PathVariable("path") String path, HttpServletRequest request,
                      HttpServletResponse response) throws IOException {
         CHMFile chm = getChm(path);
-        if (chm == null) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no chm file mapping to " + path);
-            return;
-        }
 
         String uri = (String)request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
         String bestMatchPattern = (String)request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
@@ -213,7 +192,7 @@ public class ChmController {
             os = response.getOutputStream();
             IOUtils.copy(is, os);
         } catch (FileNotFoundException ex) {
-            response.sendError(HttpStatus.NOT_FOUND.value(), "no file: " + filename + " in chm document.");
+            throw new ResourceNotFoundException("no file: " + filename + " in chm document.");
         } finally {
             if (is != null) {
                 try {
@@ -241,4 +220,12 @@ public class ChmController {
         }
         return "text/html";
     }
+
+    /*
+    private String getContentType(String filename) {
+        FileNameMap fileNameMap = URLConnection.getFileNameMap();
+        String mimeType = fileNameMap.getContentTypeFor(filename);
+        return mimeType;
+    }
+    */
 }

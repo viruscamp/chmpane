@@ -37,6 +37,8 @@
  */
 package cn.rui.chm;
 
+import org.mozilla.universalchardet.UniversalDetector;
+
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -450,6 +452,24 @@ public class CHMFile implements Closeable {
 		return siteMapName;
 	}
 
+	private String detectEncoding(InputStream is) throws IOException {
+		UniversalDetector detector = new UniversalDetector(null);
+
+		byte[] buf = new byte[1024];
+		int nread;
+		while ((nread = is.read(buf)) > 0 && !detector.isDone()) {
+			detector.handleData(buf, 0, nread);
+		}
+
+		detector.dataEnd();
+		try {
+			is.close();
+		} catch (Exception ex) {
+		}
+
+		return detector.getDetectedCharset();
+	}
+
 	public SiteMap getSiteMap() throws IOException {
 		if (siteMap != null) {
 			return siteMap;
@@ -462,7 +482,16 @@ public class CHMFile implements Closeable {
 		if (is == null) {
 			return null;
 		}
-		SiteMap sitemap = new SiteMap(is);
+		String encoding = detectEncoding(is);
+		log.info("SiteMap " + filename + " encoding detected: " + encoding);
+		is = getResourceAsStream(filename);
+		SiteMap sitemap;
+		if (encoding != null) {
+			InputStreamReader reader = new InputStreamReader(is, encoding);
+			sitemap = new SiteMap(reader);
+		} else {
+			sitemap = new SiteMap(is);
+		}
 		this.siteMap = sitemap;
 		return sitemap;
 	}
