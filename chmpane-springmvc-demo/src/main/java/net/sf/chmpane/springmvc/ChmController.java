@@ -1,8 +1,8 @@
 package net.sf.chmpane.springmvc;
 
 import cn.rui.chm.CHMFile;
+import cn.rui.chm.SharpSystem;
 import cn.rui.chm.SiteMap;
-import org.apache.commons.io.IOUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.bind.annotation.*;
@@ -56,29 +56,12 @@ public class ChmController {
         return chm;
     }
 
-    /*
-    @RequestMapping(value = "/{path}/iframe", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
-    @ResponseBody
-    public String iframe(@PathVariable("path") String path) throws IOException {
-        CHMFile chm = getChm(path);
-        return "<!DOCTYPE html>" +
-                "<html>\n" +
-                "<head>\n" +
-                "    <meta charset='utf-8'>\n" +
-                "    <title>CHM</title>\n" +
-                "</head>\n" +
-                "<body>\n" +
-                "    <iframe height='100%' width='20%' style='float:left' name='sitemap' src='sitemap.html'></iframe>\n" +
-                "    <iframe height='100%' style='overflow:hidden' name='content'><iframe>\n" +
-                "</body>\n" +
-                "</html>";
-    }
-    */
-
     @RequestMapping(value = "/{path}", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
     @ResponseBody
     public String index(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
+        SharpSystem sharpSystem = chm.getSharpSystem();
+        String defaultTopic = sharpSystem.getProperties().get(SharpSystem.HhpOption.DefaultTopic);
         return "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \n" +
                 "    \"http://www.w3.org/TR/html4/frameset.dtd\">" +
                 "<html>\n" +
@@ -88,7 +71,9 @@ public class ChmController {
                 "</head>\n" +
                 "<frameset cols='20%,*'>\n" +
                 "    <frame name='sitemap' src='sitemap.html' />\n" +
-                "    <frame name='content' />\n" +
+                "    <frame name='content' " +
+                ((defaultTopic == null) ? "" : ("src='" + defaultTopic + "'")) +
+                "/>\n" +
                 "</frameset>\n" +
                 "</html>";
     }
@@ -167,6 +152,13 @@ public class ChmController {
         file(chm, chm.getContentsSiteMapName(), response);
     }
 
+    @RequestMapping(value = "/{path}/sharp-system", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
+    @ResponseBody
+    public SharpSystem sharpSystem(@PathVariable("path") String path) throws IOException {
+        CHMFile chm = getChm(path);
+        return chm.getSharpSystem();
+    }
+
     @RequestMapping("/{path}/**")
     public void file(@PathVariable("path") String path, HttpServletRequest request,
                      HttpServletResponse response) throws IOException {
@@ -190,7 +182,7 @@ public class ChmController {
             response.setContentType(getContentType(filename));
             is = chm.getResourceAsStream(filename);
             os = response.getOutputStream();
-            IOUtils.copy(is, os);
+            copyLarge(is, os);
         } catch (FileNotFoundException ex) {
             throw new ResourceNotFoundException("no file: " + filename + " in chm document.");
         } finally {
@@ -201,6 +193,19 @@ public class ChmController {
                 }
             }
         }
+    }
+
+    private static final int DEFAULT_BUFFER_SIZE = 1024 * 4;
+    public static long copyLarge(InputStream input, OutputStream output)
+            throws IOException {
+        byte[] buffer = new byte[DEFAULT_BUFFER_SIZE];
+        long count = 0;
+        int n = 0;
+        while (-1 != (n = input.read(buffer))) {
+            output.write(buffer, 0, n);
+            count += n;
+        }
+        return count;
     }
 
     private String getContentType(String filename) {

@@ -25,11 +25,6 @@
             <artifactId>chmpane-springmvc</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-io</artifactId>
-            <version>1.3.2</version>
-        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

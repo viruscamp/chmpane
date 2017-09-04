@@ -42,6 +42,7 @@ import org.mozilla.universalchardet.UniversalDetector;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
 /**
@@ -526,6 +527,22 @@ public class CHMFile implements Closeable {
 		is = getResourceAsStream(filename);
 		SiteMap sitemap = new SiteMap(is, encoding);
 		return sitemap;
+	}
+
+	private AtomicReference<SharpSystem> sharpSystemHolder = new AtomicReference<SharpSystem>(null);
+
+	public SharpSystem getSharpSystem() throws IOException {
+		SharpSystem sharpSystem = sharpSystemHolder.get();
+		if (sharpSystem == null) {
+			sharpSystem = new SharpSystem(this);
+			if (sharpSystemHolder.compareAndSet(null, sharpSystem)) {
+				return sharpSystem;
+			} else {
+				return sharpSystemHolder.get();
+			}
+		} else {
+			return sharpSystem;
+		}
 	}
 
 	/**
