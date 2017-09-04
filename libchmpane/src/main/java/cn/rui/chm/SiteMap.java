@@ -3,6 +3,7 @@ package cn.rui.chm;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
+import org.ccil.cowan.tagsoup.Parser;
 import org.ccil.cowan.tagsoup.jaxp.SAXParserImpl;
 import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
@@ -30,37 +31,55 @@ public class SiteMap {
 
     public SiteMap(String content) throws IOException {
         this();
+        if (SaxParserHolder.saxParser == null) {
+            throw new IOException("SAXParser init fail");
+        }
         try {
-            saxParser.parse(content, new SiteMapSaxHandler());
+            SaxParserHolder.saxParser.parse(content, new SiteMapSaxHandler());
         } catch (SAXException ex) {
             log.throwing("SiteMap", "SiteMap(String content)", ex);
+            throw new IOException("SAXParser error");
         }
     }
 
     public SiteMap(Reader reader) throws IOException {
         this();
+        if (SaxParserHolder.saxParser == null) {
+            throw new IOException("SAXParser init fail");
+        }
         try {
-            saxParser.parse(new InputSource(reader), new SiteMapSaxHandler());
+            SaxParserHolder.saxParser.parse(new InputSource(reader), new SiteMapSaxHandler());
         } catch (SAXException ex) {
             log.throwing("SiteMap", "SiteMap(Reader reader)", ex);
+            throw new IOException("SAXParser error");
         }
     }
 
     public SiteMap(InputStream is) throws IOException {
         this();
+        if (SaxParserHolder.saxParser == null) {
+            throw new IOException("SAXParser init fail");
+        }
         try {
-            saxParser.parse(new InputSource(is), new SiteMapSaxHandler());
+            SaxParserHolder.saxParser.parse(new InputSource(is), new SiteMapSaxHandler());
         } catch (SAXException ex) {
             log.throwing("SiteMap", "SiteMap(InputStream is)", ex);
+            throw new IOException("SAXParser error");
         }
     }
 
-    private static SAXParser saxParser;
-    static {
-        try {
-            saxParser = SAXParserImpl.newInstance(null);
-        } catch (Exception ex) {
-            log.throwing("SiteMap", "static init", ex);
+    static class SaxParserHolder {
+        static SAXParser saxParser = getSaxParser();
+
+        static SAXParser getSaxParser() {
+            SAXParserImpl saxParser = null;
+            try {
+                saxParser = SAXParserImpl.newInstance(null);
+                //saxParser.setFeature(Parser.restartElementsFeature, false);
+            } catch (Exception ex) {
+                log.throwing("SiteMap", "static init", ex);
+            }
+            return saxParser;
         }
     }
 

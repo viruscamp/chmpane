@@ -114,7 +114,7 @@ public class ChmController {
     }
 
     private SiteMap getSiteMap(CHMFile chm) throws IOException {
-        SiteMap sitemap = chm.getSiteMap();
+        SiteMap sitemap = chm.getContentsSiteMap();
         if (sitemap == null) {
             throw new ResourceNotFoundException("no sitemap in the chm file");
         }
@@ -164,7 +164,7 @@ public class ChmController {
     @RequestMapping(value = "/{path}/sitemap.hhc", method = RequestMethod.GET)
     public void siteMapHhc(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
         CHMFile chm = getChm(path);
-        file(chm, chm.getSiteMapName(), response);
+        file(chm, chm.getContentsSiteMapName(), response);
     }
 
     @RequestMapping("/{path}/**")

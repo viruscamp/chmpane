@@ -80,22 +80,24 @@ public class CHMFile implements Closeable {
 
 	private Map<String, ListingEntry> entryCache;
 	private List<String> resources;
-	private String siteMapName;
+	private String contentsSiteMapName; // *.hhc
+	private String indexSiteMapName; // *.hhk
 
-	private SiteMap siteMap;
+	private SiteMap contentsSiteMap;
+	private SiteMap indexSiteMap;
 
 	private LazyLoadChunks lazyLoadChunks;
 	class LazyLoadChunks {
 		private Map<String, ListingEntry> entryCache;
-		private List<String> resources;
 
 		private AtomicInteger completedChunks;
 		private DirectoryChunk[] directoryChunks;
 		private DirectoryChunk rootIndexChunk;
 
 		LazyLoadChunks(int rootIndexChunkNo, int totalChunks) {
+			//entryCache = new ConcurrentSkipListMap<String, ListingEntry>(String.CASE_INSENSITIVE_ORDER); // since 1.6
+			//entryCache = Collections.synchronizedMap(new TreeMap<String, ListingEntry>(String.CASE_INSENSITIVE_ORDER));
 			entryCache = new TreeMap<String, ListingEntry>(String.CASE_INSENSITIVE_ORDER);
-			resources = new ArrayList<String>();
 
 			completedChunks = new AtomicInteger(0);
 			directoryChunks = new DirectoryChunk[totalChunks];
@@ -153,10 +155,10 @@ public class CHMFile implements Closeable {
 		}
 
 		private DirectoryChunk readChunk(DirectoryChunk chunk) throws IOException {
+			if (chunk.type != DirectoryChunkType.Unknown) {
+				return chunk;
+			}
 			synchronized (chunk) {
-				if (chunk.type != DirectoryChunkType.Unknown) {
-					return chunk;
-				}
 				if (chunk.chunkNo == -1) {
 					List<DirectoryChunk> children = new ArrayList<DirectoryChunk>(lastPMGLChunkNo - firstPMGLChunkNo + 1);
 					for (int chunkNo = firstPMGLChunkNo; chunkNo <= lastPMGLChunkNo; chunkNo++) {
@@ -195,15 +197,19 @@ public class CHMFile implements Closeable {
 					in.read32(); // = 0;
 					in.read32(); // previousChunk #
 					in.read32(); // nextChunk #
-					while (in.available() > freeSpace) {
-						ListingEntry entry = new ListingEntry(in);
-						entries.add(entry);
-						entryCache.put(entry.name, entry); // TODO lock needed
-						if (entry.name.charAt(0) == '/') {
-							resources.add(entry.name); // TODO lock needed
-							if (entry.name.endsWith(".hhc")) { // .hhc entry is the navigation file
-								siteMapName = entry.name;
-								log.info("CHM sitemap " + siteMapName);
+					synchronized (entryCache) {
+						while (in.available() > freeSpace) {
+							ListingEntry entry = new ListingEntry(in);
+							entries.add(entry);
+							entryCache.put(entry.name, entry);
+							if (entry.name.endsWith(".hhc") && entry.name.charAt(0) == '/') {
+								// .hhc entry is the navigation file
+								contentsSiteMapName = entry.name;
+								log.info("CHM contents sitemap " + contentsSiteMapName);
+							} else if (entry.name.endsWith(".hhk") && entry.name.charAt(0) == '/') {
+								// .hhk entry is the navigation file
+								indexSiteMapName = entry.name;
+								log.info("CHM index sitemap " + indexSiteMapName);
 							}
 						}
 					}
@@ -235,7 +241,7 @@ public class CHMFile implements Closeable {
 
 		public synchronized void listAllChunks() throws IOException {
 			if (completedChunks.get() < totalChunks) {
-				for (int i = firstPMGLChunkNo; i <= lastPMGLChunkNo; i ++) {
+				for (int i = firstPMGLChunkNo; i <= lastPMGLChunkNo; i++) {
 					DirectoryChunk chunk = getOrCreateChunk(i, null);
 					readChunk(chunk);
 				}
@@ -383,7 +389,13 @@ public class CHMFile implements Closeable {
 		LazyLoadChunks lazyLoadChunks = this.lazyLoadChunks;
 		if (lazyLoadChunks != null) {
 			entryCache = lazyLoadChunks.entryCache;
-			resources = Collections.unmodifiableList(lazyLoadChunks.resources);
+			List<String> resources = new ArrayList<String>(entryCache.size());
+			for (String name : entryCache.keySet()) {
+				if (name.startsWith("/")) {
+					resources.add(name);
+				}
+			}
+			this.resources = Collections.unmodifiableList(resources);
 			this.lazyLoadChunks = null;
 		}
 	}
@@ -424,7 +436,7 @@ public class CHMFile implements Closeable {
 	 */
 	public InputStream getResourceAsStream(String name) throws IOException {
 		if (name == null || name.length() == 0)
-			name = getSiteMapName();
+			name = getContentsSiteMapName();
 		ListingEntry entry = resolveEntry(name);
 		if (entry == null)
 			throw new FileNotFoundException(file + "#" + name);
@@ -444,18 +456,26 @@ public class CHMFile implements Closeable {
 	 * The sitemap file, usually the .hhc file.
 	 * @see <a href="http://www.nongnu.org/chmspec/latest/Sitemap.html#HHC">HHC format</a>
 	 */
-	public String getSiteMapName() throws IOException {
-		if (siteMapName != null) {
-			return siteMapName;
+	public String getContentsSiteMapName() throws IOException {
+		if (contentsSiteMapName != null) {
+			return contentsSiteMapName;
 		}
 		list();
-		return siteMapName;
+		return contentsSiteMapName;
+	}
+
+	public String getIndexSiteMapName() throws IOException {
+		if (indexSiteMapName != null) {
+			return indexSiteMapName;
+		}
+		list();
+		return indexSiteMapName;
 	}
 
 	private String detectEncoding(InputStream is) throws IOException {
 		UniversalDetector detector = new UniversalDetector(null);
 
-		byte[] buf = new byte[1024];
+		byte[] buf = new byte[512];
 		int nread;
 		while ((nread = is.read(buf)) > 0 && !detector.isDone()) {
 			detector.handleData(buf, 0, nread);
@@ -470,20 +490,39 @@ public class CHMFile implements Closeable {
 		return detector.getDetectedCharset();
 	}
 
-	public SiteMap getSiteMap() throws IOException {
-		if (siteMap != null) {
-			return siteMap;
+	public SiteMap getContentsSiteMap() throws IOException {
+		if (contentsSiteMap != null) {
+			return contentsSiteMap;
 		}
-		String filename = getSiteMapName();
+		String filename = getContentsSiteMapName();
 		if (filename == null) {
 			return null;
 		}
+		SiteMap sitemap = extractSiteMap(filename);
+		this.contentsSiteMap = sitemap;
+		return contentsSiteMap;
+	}
+
+	public SiteMap getIndexSiteMap() throws IOException {
+		if (indexSiteMap != null) {
+			return indexSiteMap;
+		}
+		String filename = getIndexSiteMapName();
+		if (filename == null) {
+			return null;
+		}
+		SiteMap sitemap = extractSiteMap(filename);
+		this.indexSiteMap = sitemap;
+		return indexSiteMap;
+	}
+
+	public SiteMap extractSiteMap(String filename) throws IOException {
 		InputStream is = getResourceAsStream(filename);
 		if (is == null) {
 			return null;
 		}
 		String encoding = detectEncoding(is);
-		log.info("SiteMap " + filename + " encoding detected: " + encoding);
+		log.info("sitemap " + filename + " encoding detected: " + encoding);
 		is = getResourceAsStream(filename);
 		SiteMap sitemap;
 		if (encoding != null) {
@@ -492,7 +531,6 @@ public class CHMFile implements Closeable {
 		} else {
 			sitemap = new SiteMap(is);
 		}
-		this.siteMap = sitemap;
 		return sitemap;
 	}
 
@@ -504,7 +542,10 @@ public class CHMFile implements Closeable {
 
 		entryCache = null;
 		resources = null;
-		siteMapName = null;
+		contentsSiteMapName = null;
+		indexSiteMapName = null;
+		contentsSiteMap = null;
+		indexSiteMap = null;
 
 		sections = null;
 		if (fileAccess != null) {
