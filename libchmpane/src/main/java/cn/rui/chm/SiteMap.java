@@ -3,14 +3,15 @@ package cn.rui.chm;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import org.ccil.cowan.tagsoup.Parser;
-import org.ccil.cowan.tagsoup.jaxp.SAXParserImpl;
-import org.xml.sax.Attributes;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
-import org.xml.sax.helpers.DefaultHandler;
+import org.htmlparser.Attribute;
+import org.htmlparser.Parser;
+import org.htmlparser.Tag;
+import org.htmlparser.lexer.InputStreamSource;
+import org.htmlparser.lexer.Lexer;
+import org.htmlparser.lexer.Page;
+import org.htmlparser.util.ParserException;
+import org.htmlparser.visitors.NodeVisitor;
 
-import javax.xml.parsers.SAXParser;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
@@ -29,58 +30,29 @@ public class SiteMap {
         root = new Item();
     }
 
-    public SiteMap(String content) throws IOException {
+    private SiteMap(Page page) throws IOException {
         this();
-        if (SaxParserHolder.saxParser == null) {
-            throw new IOException("SAXParser init fail");
-        }
         try {
-            SaxParserHolder.saxParser.parse(content, new SiteMapSaxHandler());
-        } catch (SAXException ex) {
-            log.throwing("SiteMap", "SiteMap(String content)", ex);
-            throw new IOException("SAXParser error");
+            Lexer lexer = new Lexer(page);
+            Parser parser = new Parser(lexer);
+            NodeVisitor visitor = new SiteMapNodeVistor();
+            parser.visitAllNodesWith(visitor);
+        } catch (ParserException ex) {
+            log.throwing("SiteMap", "SiteMap(Page page)", ex);
+            throw new IOException("HTML Parser error");
         }
+    }
+
+    public SiteMap(String content) throws IOException {
+        this(new Page(content));
     }
 
     public SiteMap(Reader reader) throws IOException {
-        this();
-        if (SaxParserHolder.saxParser == null) {
-            throw new IOException("SAXParser init fail");
-        }
-        try {
-            SaxParserHolder.saxParser.parse(new InputSource(reader), new SiteMapSaxHandler());
-        } catch (SAXException ex) {
-            log.throwing("SiteMap", "SiteMap(Reader reader)", ex);
-            throw new IOException("SAXParser error");
-        }
+        this(new Scanner(reader).useDelimiter("\\Z").next());
     }
 
-    public SiteMap(InputStream is) throws IOException {
-        this();
-        if (SaxParserHolder.saxParser == null) {
-            throw new IOException("SAXParser init fail");
-        }
-        try {
-            SaxParserHolder.saxParser.parse(new InputSource(is), new SiteMapSaxHandler());
-        } catch (SAXException ex) {
-            log.throwing("SiteMap", "SiteMap(InputStream is)", ex);
-            throw new IOException("SAXParser error");
-        }
-    }
-
-    static class SaxParserHolder {
-        static SAXParser saxParser = getSaxParser();
-
-        static SAXParser getSaxParser() {
-            SAXParserImpl saxParser = null;
-            try {
-                saxParser = SAXParserImpl.newInstance(null);
-                //saxParser.setFeature(Parser.restartElementsFeature, false);
-            } catch (Exception ex) {
-                log.throwing("SiteMap", "static init", ex);
-            }
-            return saxParser;
-        }
+    public SiteMap(InputStream is, String charset) throws IOException {
+        this(new Page(new InputStreamSource(is, charset)));
     }
 
     @EqualsAndHashCode
@@ -95,14 +67,14 @@ public class SiteMap {
         @Getter
         private String newImage;
 
-        private Map<String, String> properties;
+        private Map<String, String> params;
         private List<Item> items;
 
-        public Map<String, String> getProperties() {
-            if (properties == null) {
+        public Map<String, String> getParams() {
+            if (params == null) {
                 return null;
             }
-            return Collections.unmodifiableMap(properties);
+            return Collections.unmodifiableMap(params);
         }
 
         public List<Item> getItems() {
@@ -113,23 +85,23 @@ public class SiteMap {
         }
     }
 
-    class SiteMapSaxHandler extends DefaultHandler {
+    class SiteMapNodeVistor extends NodeVisitor {
         private Stack<Item> stack;
         private boolean closeUlToBeDetermined = false;
 
-        SiteMapSaxHandler() {
+        SiteMapNodeVistor() {
             super();
             stack = new Stack<Item>();
             stack.push(root);
         }
 
         @Override
-        public void startElement (String uri, String localName,
-                                  String qName, Attributes attributes)
-                throws SAXException {
+        public void visitTag(Tag tag) {
+            String localName = tag.getTagName().toLowerCase();
+
             if (closeUlToBeDetermined) {
                 closeUlToBeDetermined = false;
-                if ("ul".equalsIgnoreCase(localName)) {
+                if ("ul".equals(localName)) {
                     // do nothing and return
                     return;
                 } else {
@@ -138,22 +110,23 @@ public class SiteMap {
                 }
             }
 
-            if ("li".equalsIgnoreCase(localName)) {
+            if ("li".equals(localName)) {
                 Item item = new Item();
                 if (stack.peek().items == null) {
                     stack.pop();
                 }
                 stack.peek().items.add(item);
                 stack.push(item);
-            } else if ("object".equalsIgnoreCase(localName)) {
-                Map<String, String> properties = new HashMap<String, String>();
-                stack.peek().properties = properties;
-            } else if ("param".equalsIgnoreCase(localName)) {
+            } else if ("object".equals(localName)) {
+                Map<String, String> params = new HashMap<String, String>();
+                stack.peek().params = params;
+            } else if ("param".equals(localName)) {
                 String name = null;
                 String value = null;
-                for (int i = 0; i < attributes.getLength(); i++) {
-                    String attrName = attributes.getLocalName(i);
-                    String attrValue = attributes.getValue(i);
+                Vector<Attribute> attributes = tag.getAttributesEx();
+                for (Attribute attr : attributes) {
+                    String attrName = attr.getName();
+                    String attrValue = attr.getValue();
                     if ("name".equalsIgnoreCase(attrName)) {
                         name = attrValue;
                     } else if ("value".equalsIgnoreCase(attrName)) {
@@ -161,7 +134,7 @@ public class SiteMap {
                     }
                 }
                 if (name != null && value != null) {
-                    stack.peek().properties.put(name, value);
+                    stack.peek().params.put(name, value);
                 }
             } else if ("ul".equalsIgnoreCase(localName)) {
                 List<Item> items = new LinkedList<Item>();
@@ -170,8 +143,9 @@ public class SiteMap {
         }
 
         @Override
-        public void endElement (String uri, String localName, String qName)
-                throws SAXException {
+        public void visitEndTag(Tag tag) {
+            String localName = tag.getTagName().toLowerCase();
+
             if (closeUlToBeDetermined) {
                 closeUlToBeDetermined = false;
                 closeUl();
@@ -181,9 +155,9 @@ public class SiteMap {
             if ("li".equalsIgnoreCase(localName)) {
                 // should not occur
             } else if ("object".equalsIgnoreCase(localName)) {
-                // parse item fields from properties
+                // parse item fields from params
                 Item item = stack.peek();
-                for (Map.Entry<String, String> entry : item.properties.entrySet()) {
+                for (Map.Entry<String, String> entry : item.params.entrySet()) {
                     if ("Name".equals(entry.getKey())) {
                         item.name = entry.getValue();
                     } else if ("Local".equals(entry.getKey())) {

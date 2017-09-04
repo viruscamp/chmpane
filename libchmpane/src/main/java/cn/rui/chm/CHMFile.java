@@ -524,13 +524,7 @@ public class CHMFile implements Closeable {
 		String encoding = detectEncoding(is);
 		log.info("sitemap " + filename + " encoding detected: " + encoding);
 		is = getResourceAsStream(filename);
-		SiteMap sitemap;
-		if (encoding != null) {
-			InputStreamReader reader = new InputStreamReader(is, encoding);
-			sitemap = new SiteMap(reader);
-		} else {
-			sitemap = new SiteMap(is);
-		}
+		SiteMap sitemap = new SiteMap(is, encoding);
 		return sitemap;
 	}
 
@@ -554,9 +548,9 @@ public class CHMFile implements Closeable {
 		}
 	}
 
-    protected void finalize() throws IOException {
-        close();
-    }
+	protected void finalize() throws IOException {
+		close();
+	}
 
 	class Section {
 
