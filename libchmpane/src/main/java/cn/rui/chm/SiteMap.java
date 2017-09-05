@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.util.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @EqualsAndHashCode
@@ -38,7 +39,7 @@ public class SiteMap {
             NodeVisitor visitor = new SiteMapNodeVistor();
             parser.visitAllNodesWith(visitor);
         } catch (ParserException ex) {
-            log.throwing("SiteMap", "SiteMap(Page page)", ex);
+            log.log(Level.SEVERE,"SiteMap.SiteMap(Page page)", ex);
             throw new IOException("HTML Parser error");
         }
     }

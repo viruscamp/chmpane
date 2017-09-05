@@ -1,11 +1,12 @@
 chm: header
-	0x14 DWORD LCID from the HHP file
+	0x14 DWORD LCID of OS building the file
 Header Section 1: The Directory Listing
-	0x30 DWORD Windows language ID
+	0x30 DWORD LCID of ITSS.DLL
 
-/#SYSTEM entry.code=4 offset=0x00 DWORD LCID from the HHP file
+/#SYSTEM entry.code=4
+    0x00 DWORD LCID from the HHP file
 
-/$FIftiMain header
+/$FIftiMain header, may be 0 length
 	0x7A DWORD Windows code page identifier (usually 1252 - Windows 3.1 US (ANSI))
 	0x7E DWORD LCID from the HHP file
 
@@ -21,38 +22,72 @@ Header Section 1: The Directory Listing
 		0x1C DWORD LCID from the HHP file
 
 /$WWAssociativeLinks & /$WWKeywordLinks header
-	BTree
+	BTree, may not exist
 		0x30 DWORD Windows code page identifier 
 		0x34 DWORD LCID from the HHP file
 
-/$HHTitleMap entry
+/$HHTitleMap entry, not exist mostly
 	end of file stem +0x08 DWORD LCID from the HHP file
 
-/$TitleMap entry
+/$TitleMap entry, not exist mostly
 	0x3C DWORD LCID from the HHP file
-	
-u8
+
+blueMSX.chm 0409 en_US 1252 windows-1252 ANSI Latin 1
+	lang1 0x080C fr_BE
+	lang2 0x0409 en_US
+	lang3 0x0409 en_US
+	codepage4 01252
+	lang4 0x0409 en_US
+	codepage6 01252
+	lang6 0x0409 en_US
+	codepage7 01252
+	lang7 0x0409 en_US
+
+U8125 SchemaDoc.chm 0804 zh_CN 936 gb2312
 	lang1 0x0804 zh_CN
 	lang2 0x0409 en_US
 	lang3 0x0804 zh_CN
 	codepage4 00936
 	lang4 0x0804 zh_CN
+	codepage6 00936
+	lang6 0x0804 zh_CN
+	codepage7 00936
+	lang7 0x0804 zh_CN
 
-7z
+7-Zip.chm 0409 en_US 1252 windows-1252 ANSI Latin 1
 	lang1 0x0419 ru_RU
 	lang2 0x0409 en_US
 	lang3 0x0409 en_US
 	codepage4 01252
 	lang4 0x0409 en_US
+	codepage6 01252
+	lang6 0x0409 en_US
+	codepage7 01252
+	lang7 0x0409 en_US
 	
-blend-sdk
+NETFramework40BlendSDK.chm 0804 zh_CN 936 gb2312
 	lang1 0x0409 en_US
 	lang2 0x0409 en_US
 	lang3 0x0804 zh_CN
 	codepage4 00936
 	lang4 0x0804 zh_CN
+	codepage6 00936
+	lang6 0x0804 zh_CN
+	codepage7 00936
+	lang7 0x0804 zh_CN
 
-batteryinfoview:
+batteryinfoview.chm 0409 en_US 1252 windows-1252 ANSI Latin 1
 	lang1 0x040D iw_IL
 	lang2 0x0409 en_US
 	lang3 0x0409 en_US
+	codepage6 01252
+	lang6 0x0409 en_US
+	codepage7 01252
+	lang7 0x0409 en_US
+
+IMJPCL.CHM
+	lang1 0x0411 ja_JP
+	lang2 0x0409 en_US
+	lang3 0x0411 ja_JP
+	codepage6 00932
+	lang6 0x0411 ja_JP

@@ -40,10 +40,10 @@ package cn.rui.chm;
 import org.mozilla.universalchardet.UniversalDetector;
 
 import java.io.*;
-import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -763,6 +763,8 @@ public class CHMFile implements Closeable {
 	public Map<String, Object> getLangs() {
 		Map<String, Object> values = new HashMap<String, Object>();
 		try {
+			log.info(file.getName());
+
 			values.put("lang", lang);
 			values.put("lang_locale", WindowsLanguageID.getLocale(lang));
 			log.info(String.format("lang1 0x%04X %1s", lang, WindowsLanguageID.getLocale(lang)));
@@ -782,16 +784,54 @@ public class CHMFile implements Closeable {
 				}
 			}
 
-			byte[] buf = new byte[256];
-			LEInputStream in = new LEInputStream(getResourceAsStream("/$FIftiMain"));
-			in.read(buf, 0, 0x7a);
-			int codepage4 = in.read32();
-			log.info(String.format("codepage4 %05d", codepage4));
-			int lang4 = in.read32();
-			log.info(String.format("lang4 0x%04X %1s", lang4, WindowsLanguageID.getLocale(lang4)));
+			byte[] buf = new byte[4096];
+			try {
+				LEInputStream in = new LEInputStream(getResourceAsStream("/$FIftiMain"));
+				in.read(buf, 0, 0x7a);
+				int codepage4 = in.read32();
+				log.info(String.format("codepage4 %05d", codepage4));
+				int lang4 = in.read32();
+				log.info(String.format("lang4 0x%04X %1s", lang4, WindowsLanguageID.getLocale(lang4)));
+			} catch(Exception ex) {
+				log.log(Level.SEVERE, "CHMFile.getLangs", ex);
+			}
+
+			try {
+				InputStream is = getResourceAsStream("/$OBJINST");
+				int len = is.read(buf);
+
+				LEInputStream in = new LEInputStream(new ByteArrayInputStream(buf, 0, len));
+				in.read32();
+				int entriesCount = in.read32();
+				int[] entryOffsets = new int[entriesCount];
+				int[] entrySizes = new int[entriesCount];
+				for (int i = 0; i < entriesCount; i++) {
+					entryOffsets[i] = in.read32();
+					entrySizes[i] = in.read32();
+				}
+
+				in.reset();
+				in.skip(entryOffsets[0]);
+				in.skip(0x18);
+				int codepage6 = in.read32();
+				log.info(String.format("codepage6 %05d", codepage6));
+				int lang6 = in.read32();
+				log.info(String.format("lang6 0x%04X %1s", lang6, WindowsLanguageID.getLocale(lang6)));
+
+				in.reset();
+				in.skip(entryOffsets[1]);
+				in.skip(0x14);
+				int codepage7 = in.read32();
+				log.info(String.format("codepage7 %05d", codepage7));
+				int lang7 = in.read32();
+				log.info(String.format("lang7 0x%04X %1s", lang7, WindowsLanguageID.getLocale(lang7)));
+
+			} catch(Exception ex) {
+				log.log(Level.SEVERE, "CHMFile.getLangs", ex);
+			}
 
 		} catch(Exception ex) {
-			log.throwing("CHMFile", "getLangs", ex);
+			log.log(Level.SEVERE, "CHMFile.getLangs", ex);
 		}
 		return values;
 	}
