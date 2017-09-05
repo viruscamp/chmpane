@@ -1,0 +1,58 @@
+chm: header
+	0x14 DWORD LCID from the HHP file
+Header Section 1: The Directory Listing
+	0x30 DWORD Windows language ID
+
+/#SYSTEM entry.code=4 offset=0x00 DWORD LCID from the HHP file
+
+/$FIftiMain header
+	0x7A DWORD Windows code page identifier (usually 1252 - Windows 3.1 US (ANSI))
+	0x7E DWORD LCID from the HHP file
+
+/$OBJINST
+	entry#1
+		0x18 DWORD Windows code page identifier 
+		0x1C DWORD LCID from the HHP file
+		sub#bit3
+			0x18 DWORD Windows code page identifier 
+			0x1C DWORD LCID from the HHP file
+	entry#2
+		0x18 DWORD Windows code page identifier 
+		0x1C DWORD LCID from the HHP file
+
+/$WWAssociativeLinks & /$WWKeywordLinks header
+	BTree
+		0x30 DWORD Windows code page identifier 
+		0x34 DWORD LCID from the HHP file
+
+/$HHTitleMap entry
+	end of file stem +0x08 DWORD LCID from the HHP file
+
+/$TitleMap entry
+	0x3C DWORD LCID from the HHP file
+	
+u8
+	lang1 0x0804 zh_CN
+	lang2 0x0409 en_US
+	lang3 0x0804 zh_CN
+	codepage4 00936
+	lang4 0x0804 zh_CN
+
+7z
+	lang1 0x0419 ru_RU
+	lang2 0x0409 en_US
+	lang3 0x0409 en_US
+	codepage4 01252
+	lang4 0x0409 en_US
+	
+blend-sdk
+	lang1 0x0409 en_US
+	lang2 0x0409 en_US
+	lang3 0x0804 zh_CN
+	codepage4 00936
+	lang4 0x0804 zh_CN
+
+batteryinfoview:
+	lang1 0x040D iw_IL
+	lang2 0x0409 en_US
+	lang3 0x0409 en_US

@@ -159,6 +159,13 @@ public class ChmController {
         return chm.getSharpSystem();
     }
 
+    @RequestMapping(value = "/{path}/langs", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
+    @ResponseBody
+    public Object langs(@PathVariable("path") String path) throws IOException {
+        CHMFile chm = getChm(path);
+        return chm.getLangs();
+    }
+
     @RequestMapping("/{path}/**")
     public void file(@PathVariable("path") String path, HttpServletRequest request,
                      HttpServletResponse response) throws IOException {

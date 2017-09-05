@@ -40,6 +40,7 @@ package cn.rui.chm;
 import org.mozilla.universalchardet.UniversalDetector;
 
 import java.io.*;
+import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -65,6 +66,7 @@ public class CHMFile implements Closeable {
 	private int version; // 3, 2
 	private int timestamp;
 	private int lang; // Windows Language ID
+	private int lang2;
 	private long contentOffset;
 	private long fileLength;
 	private int chunkSize;
@@ -351,7 +353,7 @@ public class CHMFile implements Closeable {
 		lastPMGLChunkNo = in.read32();
 		in.read32(); // = -1
 		totalChunks = in.read32();
-		int lang2 = in.read32(); // language code
+		lang2 = in.read32(); // language code
 		log.info("CHM ITSP language " + WindowsLanguageID.getLocale(lang2));
 
 		lazyLoadChunks = new LazyLoadChunks(rootIndexChunkNo, totalChunks);
@@ -756,6 +758,51 @@ public class CHMFile implements Closeable {
 		public String toString() {
 			return name + " @" + section + ": " + offset + " + " + length;
 		}
+	}
+
+	public Map<String, Object> getLangs() {
+		Map<String, Object> values = new HashMap<String, Object>();
+		try {
+			values.put("lang", lang);
+			values.put("lang_locale", WindowsLanguageID.getLocale(lang));
+			log.info(String.format("lang1 0x%04X %1s", lang, WindowsLanguageID.getLocale(lang)));
+
+			values.put("lang2", lang2);
+			values.put("lang2_locale", WindowsLanguageID.getLocale(lang2));
+			log.info(String.format("lang2 0x%04X %1s", lang2, WindowsLanguageID.getLocale(lang2)));
+
+			SharpSystem sharpSystem = getSharpSystem();
+			for (SharpSystem.Entry entry : sharpSystem.getEntries()) {
+				if (entry.getCode() == 4) {
+					int lang3 = intFromBytes(entry.getData());
+					values.put("lang3", lang3);
+					values.put("lang3_locale", WindowsLanguageID.getLocale(lang3));
+					log.info(String.format("lang3 0x%04X %1s", lang3, WindowsLanguageID.getLocale(lang3)));
+					break;
+				}
+			}
+
+			byte[] buf = new byte[256];
+			LEInputStream in = new LEInputStream(getResourceAsStream("/$FIftiMain"));
+			in.read(buf, 0, 0x7a);
+			int codepage4 = in.read32();
+			log.info(String.format("codepage4 %05d", codepage4));
+			int lang4 = in.read32();
+			log.info(String.format("lang4 0x%04X %1s", lang4, WindowsLanguageID.getLocale(lang4)));
+
+		} catch(Exception ex) {
+			log.throwing("CHMFile", "getLangs", ex);
+		}
+		return values;
+	}
+
+	private int intFromBytes(byte[] bytes) {
+		int value= 0;
+		for (int i = 0; i < 4; i++) {
+			int shift = i * 8;
+			value += (bytes[i] & 0x000000FF) << shift;
+		}
+		return value;
 	}
 
 	public static void main(String[]argv) throws Exception {

@@ -47,8 +47,6 @@ class WindowsLanguageID {
 	
 	private static Map<Integer, Locale> loadMap() {
 		Map<Integer, Locale> map = new HashMap<Integer, Locale>();
-		map.put(0x0404, new Locale("zh", "TW", ""));
-		map.put(0x0804, new Locale("zh", "CN", ""));
 		map.put(0x0436, new Locale("af", "ZA", "")); // Afrikaans
 		map.put(0x041c, new Locale("sq", "AL", "")); // Albanian
 		map.put(0x0401, new Locale("ar", "SA", "")); // Arabic - Saudi Arabia
@@ -89,14 +87,6 @@ class WindowsLanguageID {
 		map.put(0x101a, new Locale("hr", "BA", "")); // Croatian - Bosnia
 		map.put(0x0405, new Locale("cs", "CZ", "")); // Czech
 		map.put(0x0406, new Locale("da", "DK", "")); // Danish
-		map.put(0x0413, new Locale("nl", "NL", "")); // Dutch (Netherlands)
-		map.put(0x0409, new Locale("en", "US", "")); // English (United States)
-		map.put(0x0809, new Locale("en", "UK", "")); // English (United Kingdom)
-		map.put(0x0c09, new Locale("en", "AU", "")); // English (Australian)
-		map.put(0x1009, new Locale("en", "CA", "")); // English (Canadian)
-		map.put(0x1409, new Locale("en", "NZ", "")); // English (New Zealand)
-		map.put(0x1809, new Locale("en", "IE", "")); // English (Ireland)
-		map.put(0x1c09, new Locale("en", "ZA", "")); // English (South Africa)
 		map.put(0x048c, new Locale("gbz", "AF", "")); // Dari - Afghanistan
 		map.put(0x0465, new Locale("div", "MV", "")); // Divehi - Maldives
 		map.put(0x0413, new Locale("nl", "NL", "")); // Dutch - The Netherlands
@@ -118,11 +108,6 @@ class WindowsLanguageID {
 		map.put(0x0438, new Locale("fo", "FO", "")); // Faroese
 		map.put(0x0464, new Locale("fil", "PH", "")); // Filipino
 		map.put(0x040b, new Locale("fi", "FI", "")); // Finnish
-		map.put(0x040c, new Locale("fr", "FR", "")); // French (Standard)
-		map.put(0x080c, new Locale("fr", "BE", "")); // French (Belgian)
-		map.put(0x0c0c, new Locale("fr", "CA", "")); // French (Canadian)
-		map.put(0x100c, new Locale("fr", "CH", "")); // French (Switzerland)
-		map.put(0x0407, new Locale("de", "DE", "")); // German (Standard)
 		map.put(0x040c, new Locale("fr", "FR", "")); // French - France
 		map.put(0x080c, new Locale("fr", "BE", "")); // French - Belgium
 		map.put(0x0c0c, new Locale("fr", "CA", "")); // French - Canada
@@ -138,26 +123,15 @@ class WindowsLanguageID {
 		map.put(0x1007, new Locale("de", "LU", "")); // German - Luxembourg
 		map.put(0x1407, new Locale("de", "LI", "")); // German - Liechtenstein
 		map.put(0x0408, new Locale("el", "GR", "")); // Greek
-		map.put(0x040d, new Locale("iw", "IL", "")); // Hebrew
 		map.put(0x0447, new Locale("gu", "IN", "")); // Gujarati
 		map.put(0x040d, new Locale("he", "IL", "")); // Hebrew
 		map.put(0x0439, new Locale("hi", "IN", "")); // Hindi
 		map.put(0x040e, new Locale("hu", "HU", "")); // Hungarian
 		map.put(0x040f, new Locale("is", "IS", "")); // Icelandic
-		map.put(0x0410, new Locale("it", "IT", "")); // Italian (Standard)
-		map.put(0x0411, new Locale("ja", "JA", "")); // Japanese
-		map.put(0x0414, new Locale("no", "NO", "")); // Norwegian (Bokmal)
-		map.put(0x0816, new Locale("pt", "PT", "")); // Portuguese (Standard)
-		map.put(0x0c0a, new Locale("es", "ES", "")); // Spanish (Modern Sort)
-		map.put(0x0441, new Locale("sw", "KE", "")); // Swahili (Kenya)
-		map.put(0x041d, new Locale("sv", "SE", "")); // Swedish
-		map.put(0x081d, new Locale("sv", "FI", "")); // Swedish (Finland)
 		map.put(0x0421, new Locale("id", "ID", "")); // Indonesian
 		map.put(0x045d, new Locale("iu", "CA", "")); // Inuktitut
 		map.put(0x085d, new Locale("iu", "CA", "")); // Inuktitut - Latin
 		map.put(0x083c, new Locale("ga", "IE", "")); // Irish - Ireland
-		map.put(0x0434, new Locale("xh", "ZA", "")); // Xhosa - South Africa
-		map.put(0x0435, new Locale("zu", "ZA", "")); // Zulu
 		map.put(0x0410, new Locale("it", "IT", "")); // Italian - Italy
 		map.put(0x0810, new Locale("it", "CH", "")); // Italian - Switzerland
 		map.put(0x0411, new Locale("ja", "JP", "")); // Japanese
@@ -190,9 +164,9 @@ class WindowsLanguageID {
 		map.put(0x0416, new Locale("pt", "BR", "")); // Portuguese - Brazil
 		map.put(0x0816, new Locale("pt", "PT", "")); // Portuguese - Portugal
 		map.put(0x0446, new Locale("pa", "IN", "")); // Punjabi
-		map.put(0x046b, new Locale("quz", "BO", "")); // Quechua (Bolivia)
-		map.put(0x086b, new Locale("quz", "EC", "")); // Quechua (Ecuador)
-		map.put(0x0c6b, new Locale("quz", "PE", "")); // Quechua (Peru)
+		map.put(0x046b, new Locale("quz", "BO", "")); // Quechua - Bolivia
+		map.put(0x086b, new Locale("quz", "EC", "")); // Quechua - Ecuador
+		map.put(0x0c6b, new Locale("quz", "PE", "")); // Quechua - Peru
 		map.put(0x0418, new Locale("ro", "RO", "")); // Romanian - Romania
 		map.put(0x0417, new Locale("rm", "CH", "")); // Raeto-Romanese
 		map.put(0x0419, new Locale("ru", "RU", "")); // Russian
@@ -250,6 +224,8 @@ class WindowsLanguageID {
 		map.put(0x0843, new Locale("uz", "UZ", "")); // Uzbek - Cyrillic
 		map.put(0x042a, new Locale("vi", "VN", "")); // Vietnamese
 		map.put(0x0452, new Locale("cy", "GB", "")); // Welsh
+		map.put(0x0434, new Locale("xh", "ZA", "")); // Xhosa - South Africa
+		map.put(0x0435, new Locale("zu", "ZA", "")); // Zulu
 		return map;
 	}
 	
