@@ -5,23 +5,28 @@ import lombok.Getter;
 import lombok.ToString;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
 import java.util.*;
 
+/**
+ * @see <a href='http://www.nongnu.org/chmspec/latest/Internal.html#SYSTEM'>Internal file formats /#SYSTEM</a>
+ */
 @EqualsAndHashCode
 @ToString
 @Getter
 public class SharpSystem {
     public static final String FILENAME = "/#SYSTEM";
 
-    public SharpSystem(CHMFile chm) throws IOException {
-        LEInputStream in = new LEInputStream(chm.getResourceAsStream(FILENAME));
+    public SharpSystem(InputStream is, String charsetName) throws IOException {
+        LEInputStream in = new LEInputStream(is);
         version = in.read32();
         List<Entry> entries = new LinkedList<Entry>();
         Map<HhpOption, String> properties = new HashMap<HhpOption, String>();
         while (in.available() > 0) {
-            Entry entry = Entry.build(in);
+            Entry entry = Entry.build(in, charsetName);
             entries.add(entry);
-
             if (entry instanceof StringEntry) {
                 properties.put(((StringEntry) entry).hhpOption, ((StringEntry) entry).value);
             }
@@ -30,19 +35,46 @@ public class SharpSystem {
         this.properties = Collections.unmodifiableMap(properties);
     }
 
-    private int version;
-    private List<Entry> entries;
-    private Map<HhpOption, String> properties;
+    public SharpSystem(CHMFile chm) throws IOException {
+        this(chm.getResourceAsStream(FILENAME), chm.getCharsetName());
+    }
+
+    public static Charset getCharset(CHMFile chm) throws IOException {
+        LEInputStream in = null;
+        try {
+            in = new LEInputStream(chm.getResourceAsStream(FILENAME));
+            int version = in.read32();
+            while (in.available() > 0) {
+                int code = in.read16();
+                int dataLen = in.read16();
+                if (code == 4) {
+                    int lcid = in.read32();
+                    return WindowsLanguageID.getDefaultCharset(lcid);
+                }
+                in.skip(dataLen);
+                continue;
+            }
+            return null;
+        } finally {
+            if (in != null) {
+                in.close();
+            }
+        }
+    }
+
+    private final int version;
+    private final List<Entry> entries;
+    private final Map<HhpOption, String> properties;
 
     @EqualsAndHashCode
     @ToString
     public static class Entry {
-        public static Entry build(LEInputStream in) throws IOException {
+        public static Entry build(LEInputStream in, String charsetName) throws IOException {
             int code = in.read16();
             int dataLen = in.read16();
             byte[] data = new byte[dataLen];
             in.read(data);
-            StringEntry stringEntry = StringEntry.build(code, data);
+            StringEntry stringEntry = StringEntry.build(code, data, charsetName);
             if (stringEntry != null) {
                 return stringEntry;
             }
@@ -77,15 +109,11 @@ public class SharpSystem {
 
         DefaultFont(16, "Default Font");
 
-        private final int code;
-        public int getCode() {
-            return code;
-        }
+        @Getter
+        public final int code;
 
-        private final String optionName;
-        public String getOptionName() {
-            return optionName;
-        }
+        @Getter
+        public final String optionName;
 
         HhpOption(int code, String optionName) {
             this.code = code;
@@ -115,16 +143,16 @@ public class SharpSystem {
     @ToString
     @Getter
     public static class StringEntry extends Entry {
-        public static StringEntry build(int code, byte[] data) throws IOException {
+        public static StringEntry build(int code, byte[] data, String charsetName) throws IOException {
             HhpOption hhpOption = HhpOption.codeOf(code);
             if (hhpOption != null) {
-                return new StringEntry(code, data, hhpOption);
+                return new StringEntry(hhpOption, data, charsetName);
             }
             return null;
         }
 
-        private StringEntry(int code, byte[] data, HhpOption hhpOption) {
-            super(code, data);
+        private StringEntry(HhpOption hhpOption, byte[] data, String charsetName) {
+            super(hhpOption.code, data);
             this.hhpOption = hhpOption;
 
             // find first null
@@ -135,12 +163,18 @@ public class SharpSystem {
                     break;
                 }
             }
-            this.value = new String(data, 0, endIndex);
-            // TODO determine charset
-            //this.value = new String(data, charset);
+            if (charsetName == null) {
+                this.value = new String(data, 0, endIndex);
+            } else {
+                try {
+                    this.value = new String(data, 0, endIndex, charsetName);
+                } catch (UnsupportedEncodingException ex) {
+                    throw new RuntimeException(ex);
+                }
+            }
         }
 
-        private HhpOption hhpOption;
-        private String value;
+        private final HhpOption hhpOption;
+        private final String value;
     }
 }

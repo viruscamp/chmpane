@@ -37,14 +37,19 @@
  */
 package cn.rui.chm;
 
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-class WindowsLanguageID {
+public class WindowsLanguageID {
 	
-	private static final Map<Integer, Locale> map = loadMap();
-	
+	private static final Map<Integer, Locale> lcidToLocale = loadMap();
+
+	/**
+	 * @see <a href='https://msdn.microsoft.com/en-us/library/cc233982'>Windows Language Code Identifier (LCID) list</a>
+	 * @return map of Windows LCID to Java Locale
+	 */
 	private static Map<Integer, Locale> loadMap() {
 		Map<Integer, Locale> map = new HashMap<Integer, Locale>();
 		map.put(0x0436, new Locale("af", "ZA", "")); // Afrikaans
@@ -229,7 +234,241 @@ class WindowsLanguageID {
 		return map;
 	}
 	
-	public static Locale getLocale(int code) {
-		return map.get(code);
+	public static Locale getLocale(int lcid) {
+		return lcidToLocale.get(lcid);
+	}
+
+
+	/**
+	 * Code page that marked as "Unicode only"
+	 * @see <a href='https://msdn.microsoft.com/en-us/library/aa913244'>Code Pages</a>
+	 */
+	private static final int UCCP = 1200; // Unicode UTF-16, little endian
+
+	private static final Map<Integer, Integer> lcidToCodePage = loadLcidToCodePage();
+
+	/**
+	 * @see <a href='https://msdn.microsoft.com/en-us/library/aa912040'>Default code page of Language identifier</a>
+	 * @return map of Windows LCID to Windows default code page
+	 */
+	private static Map<Integer, Integer> loadLcidToCodePage() {
+		Map<Integer, Integer> map = new HashMap<Integer, Integer>();
+		map.put(0x0436, 1252); // AFK , Afrikaans - South Africa
+		map.put(0x041c, 1250); // SQI , Albanian - Albania
+		map.put(0x1401, 1256); // ARG , Arabic - Algeria
+		map.put(0x3c01, 1256); // ARH , Arabic - Bahrain
+		map.put(0x0c01, 1256); // ARE , Arabic - Egypt
+		map.put(0x0801, 1256); // ARI , Arabic - Iraq
+		map.put(0x2c01, 1256); // ARJ , Arabic - Jordan
+		map.put(0x3401, 1256); // ARK , Arabic - Kuwait
+		map.put(0x3001, 1256); // ARB , Arabic - Lebanon
+		map.put(0x1001, 1256); // ARL , Arabic - Libya
+		map.put(0x1801, 1256); // ARM , Arabic - Morocco
+		map.put(0x2001, 1256); // ARO , Arabic - Oman
+		map.put(0x4001, 1256); // ARQ , Arabic - Qatar
+		map.put(0x0401, 1256); // ARA , Arabic - Saudi Arabia
+		map.put(0x2801, 1256); // ARS , Arabic - Syria
+		map.put(0x1c01, 1256); // ART , Arabic - Tunisia
+		map.put(0x3801, 1256); // ARU , Arabic - U.A.E.
+		map.put(0x2401, 1256); // ARY , Arabic - Yemen
+		map.put(0x042b, UCCP); // HYE , Armenian - Armenia
+		map.put(0x082c, 1251); // AZE , Azeri - Azerbaijan (Cyrillic)
+		map.put(0x042c, 1254); // AZE , Azeri - Azerbaijan (Latin)
+		map.put(0x042d, 1252); // EUQ , Basque - Spain
+		map.put(0x0423, 1251); // BEL , Belarusian - Belarus
+		map.put(0x0402, 1251); // BGR , Bulgarian - Bulgaria
+		map.put(0x0403, 1252); // CAT , Catalan - Spain
+		map.put(0x0c04, 950); // ZHH , Chinese - Hong Kong SAR
+		map.put(0x1404, 950); // ZHM , Chinese - Macao SAR
+		map.put(0x0804, 936); // CHS , Chinese - PRC
+		map.put(0x1004, 936); // ZHI , Chinese - Singapore
+		map.put(0x0404, 950); // CHT , Chinese - Taiwan
+		map.put(0x041a, 1250); // HRV , Croatian - Croatia
+		map.put(0x0405, 1250); // CSY , Czech - Czech Republic
+		map.put(0x0406, 1252); // DAN , Danish - Denmark
+		map.put(0x0465, UCCP); // DIV , Divehi - Maldives
+		map.put(0x0813, 1252); // NLB , Dutch - Belgium
+		map.put(0x0413, 1252); // NLD , Dutch - Netherlands
+		map.put(0x0c09, 1252); // ENA , English - Australia
+		map.put(0x2809, 1252); // ENL , English - Belize
+		map.put(0x1009, 1252); // ENC , English - Canada
+		map.put(0x2409, 1252); // ENB , English - Caribbean
+		map.put(0x1809, 1252); // ENI , English - Ireland
+		map.put(0x2009, 1252); // ENJ , English - Jamaica
+		map.put(0x1409, 1252); // ENZ , English - New Zealand
+		map.put(0x3409, 1252); // ENP , English - Philippines
+		map.put(0x1c09, 1252); // ENS , English - South Africa
+		map.put(0x2c09, 1252); // ENT , English - Trinidad
+		map.put(0x0809, 1252); // ENG , English - United Kingdom
+		map.put(0x0409, 1252); // USA , English - United States
+		map.put(0x3009, 1252); // ENW , English - Zimbabwe
+		map.put(0x0425, 1257); // ETI , Estonian - Estonia
+		map.put(0x0438, 1252); // FOS , Faroese - Faroe Islands
+		map.put(0x0429, 1256); // FAR , Farsi - Iran
+		map.put(0x040b, 1252); // FIN , Finnish - Finland
+		map.put(0x080c, 1252); // FRB , French - Belgium
+		map.put(0x0c0c, 1252); // FRC , French - Canada
+		map.put(0x040c, 1252); // FRA , French - France
+		map.put(0x140c, 1252); // FRL , French - Luxembourg
+		map.put(0x180c, 1252); // FRM , French - Monaco
+		map.put(0x100c, 1252); // FRS , French - Switzerland
+		map.put(0x042f, 1251); // MKI , F.Y.R.O. Macedonia - F.Y.R.O. Macedonia
+		map.put(0x0456, 1252); // GLC , Galician - Spain
+		map.put(0x0437, UCCP); // KAT , Georgian - Georgia
+		map.put(0x0c07, 1252); // DEA , German - Austria
+		map.put(0x0407, 1252); // DEU , German - Germany
+		map.put(0x1407, 1252); // DEC , German - Liechtenstein
+		map.put(0x1007, 1252); // DEL , German - Luxembourg
+		map.put(0x0807, 1252); // DES , German - Switzerland
+		map.put(0x0408, 1253); // ELL , Greek - Greece
+		map.put(0x0447, UCCP); // GUJ , Gujarati - India
+		map.put(0x040d, 1255); // HEB , Hebrew - Israel
+		map.put(0x0439, UCCP); // HIN , Hindi - India
+		map.put(0x040e, 1250); // HUN , Hungarian - Hungary
+		map.put(0x040f, 1252); // ISL , Icelandic - Iceland
+		map.put(0x0421, 1252); // IND , Indonesian - Indonesia (Bahasa)
+		map.put(0x0410, 1252); // ITA , Italian - Italy
+		map.put(0x0810, 1252); // ITS , Italian - Switzerland
+		map.put(0x0411, 932); // JPN , Japanese - Japan
+		map.put(0x044b, UCCP); // KAN , Kannada - India (Kannada script)
+		map.put(0x043f, 1251); // KKZ , Kazakh - Kazakstan
+		map.put(0x0457, UCCP); // KNK , Konkani - India
+		map.put(0x0412, 949); // KOR , Korean - Korea
+		map.put(0x0440, 1251); // KYR , Kyrgyz - Kyrgyzstan
+		map.put(0x0426, 1257); // LVI , Latvian - Latvia
+		map.put(0x0427, 1257); // LTH , Lithuanian - Lithuania
+		map.put(0x083e, 1252); // MSB , Malay - Brunei Darussalam
+		map.put(0x043e, 1252); // MSL , Malay - Malaysia
+		map.put(0x044e, UCCP); // MAR , Marathi - India
+		map.put(0x0450, 1251); // MON , Mongolian (Cyrillic) - Mongolia
+		map.put(0x0414, 1252); // NOR , Norwegian - Norway (Bokmål)
+		map.put(0x0814, 1252); // NON , Norwegian - Norway (Nynorsk)
+		map.put(0x0415, 1250); // PLK , Polish - Poland
+		map.put(0x0416, 1252); // PTB , Portuguese - Brazil
+		map.put(0x0816, 1252); // PTG , Portuguese - Portugal
+		map.put(0x0446, UCCP); // PAN , Punjabi - India (Gurmukhi script)
+		map.put(0x0418, 1250); // ROM , Romanian - Romania
+		map.put(0x0419, 1251); // RUS , Russian - Russia
+		map.put(0x044f, UCCP); // SAN , Sanskrit - India
+		map.put(0x0c1a, 1251); // SRB , Serbian - Serbia (Cyrillic)
+		map.put(0x081a, 1250); // SRL , Serbian - Serbia (Latin)
+		map.put(0x041b, 1250); // SKY , Slovak - Slovakia
+		map.put(0x0424, 1250); // SLV , Slovenian - Slovenia
+		map.put(0x2c0a, 1252); // ESS , Spanish - Argentina
+		map.put(0x400a, 1252); // ESB , Spanish - Bolivia
+		map.put(0x340a, 1252); // ESL , Spanish - Chile
+		map.put(0x240a, 1252); // ESO , Spanish - Colombia
+		map.put(0x140a, 1252); // ESC , Spanish - Costa Rica
+		map.put(0x1c0a, 1252); // ESD , Spanish - Dominican Republic
+		map.put(0x300a, 1252); // ESF , Spanish - Ecuador
+		map.put(0x440a, 1252); // ESE , Spanish - El Salvador
+		map.put(0x100a, 1252); // ESG , Spanish - Guatemala
+		map.put(0x480a, 1252); // ESH , Spanish - Honduras
+		map.put(0x080a, 1252); // ESM , Spanish - Mexico
+		map.put(0x4c0a, 1252); // ESI , Spanish - Nicaragua
+		map.put(0x180a, 1252); // ESA , Spanish - Panama
+		map.put(0x3c0a, 1252); // ESZ , Spanish - Paraguay
+		map.put(0x280a, 1252); // ESR , Spanish - Peru
+		map.put(0x500a, 1252); // ESU , Spanish - Puerto Rico
+		map.put(0x040a, 1252); // ESP , Spanish - Spain (Traditional sort)
+		map.put(0x0c0a, 1252); // ESN , Spanish - Spain (International sort)
+		map.put(0x380a, 1252); // ESY , Spanish - Uruguay
+		map.put(0x200a, 1252); // ESV , Spanish - Venezuela
+		map.put(0x0441, 1252); // SWK , Swahili - Kenya
+		map.put(0x081d, 1252); // SVF , Swedish - Finland
+		map.put(0x041d, 1252); // SVE , Swedish - Sweden
+		map.put(0x045a, UCCP); // SYR , Syriac - Syria
+		map.put(0x0449, UCCP); // TAM , Tamil - India
+		map.put(0x0444, 1251); // TTT , Tatar - Tatarstan
+		map.put(0x044a, UCCP); // TEL , Telugu - India (Telugu script)
+		map.put(0x041e, 874); // THA , Thai - Thailand
+		map.put(0x041f, 1254); // TRK , Turkish - Turkey
+		map.put(0x0422, 1251); // UKR , Ukrainian - Ukraine
+		map.put(0x0420, 1256); // URP , Urdu - Pakistan
+		map.put(0x0843, 1251); // UZB , Uzbek - Uzbekistan (Cyrillic)
+		map.put(0x0443, 1254); // UZB , Uzbek - Uzbekistan (Latin)
+		map.put(0x042a, 1258); // VIT , Vietnamese - Viet Nam
+		return map;
+	}
+
+	public static Integer getCodePage(int lcid) {
+		return lcidToCodePage.get(lcid);
+	}
+
+	private static final Map<Integer, String> codePageToCharset = loadCodePageToCharset();
+
+	/**
+	 * @see <a href='https://msdn.microsoft.com/en-us/library/windows/desktop/dd317756'>Windows Code Page Identifiers</a>
+	 * @see <a href='https://docs.oracle.com/javase/8/docs/technotes/guides/intl/encoding.doc.html'>Java Charset for Supported Encodings</a>
+	 * @return map of Windows code page to Java Charset name
+	 */
+	private static Map<Integer, String> loadCodePageToCharset() {
+		Map<Integer, String> map = new HashMap<Integer, String>();
+
+		map.put(1250, "cp1250"); // Windows Central European
+		map.put(1251, "cp1251"); // Windows Cyrillic
+		map.put(1252, "cp1252"); // Windows Western European , ANSI Latin-1 , often mislabeled as ISO-8859-1
+		map.put(1253, "cp1253"); // Windows Greek
+		map.put(1254, "cp1254"); // Windows Turkish
+		map.put(1255, "cp1255"); // Windows Hebrew
+		map.put(1256, "cp1256"); // Windows Arabic
+		map.put(1257, "cp1257"); // Windows Baltic
+		map.put(1258, "cp1258"); // Windows Vietnamese
+
+		map.put(932, "Shift_JIS"); // ms932 , Windows Japanese
+		map.put(936, "GBK"); // ms936 , Windows Simplified Chinese
+		map.put(949, "ms949"); // Windows Korean
+		map.put(950, "Big5"); // ms950 , Windows Traditional Chinese
+		map.put(54936, "GB18030"); // GB18030 Simplified Chinese (4 byte)
+
+		map.put(874, "ms874"); // Windows Thai
+
+		// TODO complete the list
+
+		// should we consider BOM ?
+		//map.put(65000, "utf-7"); // no such charset in java
+		map.put(65001, "utf-8");
+		map.put(1200, "utf-16le");
+		map.put(1201, "utf-16be");
+		map.put(12000, "utf-32le");
+		map.put(12001, "utf-32be");
+
+		return map;
+	}
+
+	public static Charset getCharsetByCodePage(Integer codePage) {
+		String charsetName = codePageToCharset.get(codePage);
+		if (charsetName == null) {
+			return null;
+		}
+		return Charset.forName(charsetName);
+	}
+
+	public static Charset getDefaultCharset(int lcid) {
+		return getCharsetByCodePage(getCodePage(lcid));
+	}
+
+	public static void main(String[] args) {
+		System.out.print(String.format("lcid count = %d\n", lcidToLocale.size()));
+		System.out.print(String.format("known lcid count = %d\n", lcidToCodePage.size()));
+		System.out.print(String.format("codepage count = %d\n", codePageToCharset.size()));
+		for (Map.Entry<Integer, Integer> entry : lcidToCodePage.entrySet()) {
+			int lcid = entry.getKey();
+			int codePage = entry.getValue();
+			Locale locale = getLocale(lcid);
+			Charset charset = getCharsetByCodePage(codePage);
+			System.out.print(String.format("lcid=%04X codepage=%4d locale=%s charset=%s\n", lcid, codePage, locale, charset));
+		}
+
+		System.out.println();
+		System.out.print(String.format("AvailableLocales count = %d\n", Locale.getAvailableLocales().length));
+		int matched = 0;
+		for (Locale locale : Locale.getAvailableLocales()) {
+			System.out.print(String.format("AvailableLocale %d %s\n", lcidToLocale.containsValue(locale)?1:0, locale));
+			matched += lcidToLocale.containsValue(locale)?1:0;
+		}
+		System.out.print(String.format("matched locale count = %d\n", matched));
+
+		System.out.print("charset for 0 " + getDefaultCharset(0));
 	}
 }

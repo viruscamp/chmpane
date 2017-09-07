@@ -37,13 +37,10 @@
  */
 package cn.rui.chm;
 
-import org.mozilla.universalchardet.UniversalDetector;
-
 import java.io.*;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -81,13 +78,11 @@ public class CHMFile implements Closeable {
 
 	RandomAccessFile fileAccess;
 
+	Charset charset;
+
 	private Map<String, ListingEntry> entryCache;
 	private List<String> resources;
-	private String contentsSiteMapName; // *.hhc
-	private String indexSiteMapName; // *.hhk
 
-	private SiteMap contentsSiteMap;
-	private SiteMap indexSiteMap;
 
 	private LazyLoadChunks lazyLoadChunks;
 	class LazyLoadChunks {
@@ -260,7 +255,7 @@ public class CHMFile implements Closeable {
 		ListingChunk("PMGL"),
 		IndexChunk("PMGI");
 
-		final String magic;
+		public final String magic;
 
 		DirectoryChunkType(String magic) {
 			this.magic = magic;
@@ -366,7 +361,7 @@ public class CHMFile implements Closeable {
 
 		if (chunkSize * totalChunks + CHM_DIRECTORY_HEADER_LENGTH != len1)
 			throw new DataFormatException("CHM directory list chunks size mismatch");
-	
+
 		/* Step 2. CHM name list: content sections */
 		in = new LEInputStream(
 				getResourceAsStream("::DataSpace/NameList"));
@@ -383,12 +378,23 @@ public class CHMFile implements Closeable {
 			} else throw new DataFormatException("Unknown content section " + name);
 			in.read16(); // = null
 		}
+
+		// read LCID from #SYSYTEM then translate it to Charset
+		charset = SharpSystem.getCharset(this);
+	}
+
+	public Charset getCharset() {
+		return charset;
+	}
+
+	public String getCharsetName() {
+		return (charset != null) ? charset.name() : null;
 	}
 
 	/**
 	 * make sure to run it only once
 	 */
-	private void lazyLoadChunksCompleted() {
+	private synchronized void lazyLoadChunksCompleted() {
 		LazyLoadChunks lazyLoadChunks = this.lazyLoadChunks;
 		if (lazyLoadChunks != null) {
 			entryCache = lazyLoadChunks.entryCache;
@@ -438,8 +444,9 @@ public class CHMFile implements Closeable {
 	 * Get an InputStream object for the named resource in the CHM.
 	 */
 	public InputStream getResourceAsStream(String name) throws IOException {
-		if (name == null || name.length() == 0)
-			name = getContentsSiteMapName();
+		if (name == null) {
+			throw new NullPointerException("name");
+		}
 		ListingEntry entry = resolveEntry(name);
 		if (entry == null)
 			throw new FileNotFoundException(file + "#" + name);
@@ -455,10 +462,7 @@ public class CHMFile implements Closeable {
 		return resources;
 	}
 
-	/**
-	 * The sitemap file, usually the .hhc file.
-	 * @see <a href="http://www.nongnu.org/chmspec/latest/Sitemap.html#HHC">HHC format</a>
-	 */
+	private volatile String contentsSiteMapName; // *.hhc
 	public String getContentsSiteMapName() throws IOException {
 		if (contentsSiteMapName != null) {
 			return contentsSiteMapName;
@@ -467,6 +471,27 @@ public class CHMFile implements Closeable {
 		return contentsSiteMapName;
 	}
 
+	private final Object contentsSiteMapLock = new Object();
+	private FinalWrapper<SiteMap> contentsSiteMap;
+	public SiteMap getContentsSiteMap() throws IOException {
+		FinalWrapper<SiteMap> tempWrapper = contentsSiteMap;
+		if (tempWrapper == null) {
+			synchronized(contentsSiteMapLock) {
+				if (contentsSiteMap == null) {
+					SiteMap result = null;
+					String filename = getContentsSiteMapName();
+					if (filename != null) {
+						result = SiteMap.create(this, filename);
+					}
+					contentsSiteMap = new FinalWrapper<SiteMap>(result);
+				}
+				tempWrapper = contentsSiteMap;
+			}
+		}
+		return tempWrapper.value;
+	}
+
+	private volatile String indexSiteMapName; // *.hhk
 	public String getIndexSiteMapName() throws IOException {
 		if (indexSiteMapName != null) {
 			return indexSiteMapName;
@@ -475,82 +500,45 @@ public class CHMFile implements Closeable {
 		return indexSiteMapName;
 	}
 
-	private String detectEncoding(InputStream is) throws IOException {
-		UniversalDetector detector = new UniversalDetector(null);
-
-		byte[] buf = new byte[512];
-		int nread;
-		while ((nread = is.read(buf)) > 0 && !detector.isDone()) {
-			detector.handleData(buf, 0, nread);
-		}
-
-		detector.dataEnd();
-		try {
-			is.close();
-		} catch (Exception ex) {
-		}
-
-		return detector.getDetectedCharset();
-	}
-
-	public SiteMap getContentsSiteMap() throws IOException {
-		if (contentsSiteMap != null) {
-			return contentsSiteMap;
-		}
-		String filename = getContentsSiteMapName();
-		if (filename == null) {
-			return null;
-		}
-		SiteMap sitemap = extractSiteMap(filename);
-		this.contentsSiteMap = sitemap;
-		return contentsSiteMap;
-	}
-
+	private final Object indexSiteMapLock = new Object();
+	private FinalWrapper<SiteMap> indexSiteMap;
 	public SiteMap getIndexSiteMap() throws IOException {
-		if (indexSiteMap != null) {
-			return indexSiteMap;
-		}
-		String filename = getIndexSiteMapName();
-		if (filename == null) {
-			return null;
-		}
-		SiteMap sitemap = extractSiteMap(filename);
-		this.indexSiteMap = sitemap;
-		return indexSiteMap;
-	}
-
-	public SiteMap extractSiteMap(String filename) throws IOException {
-		InputStream is = getResourceAsStream(filename);
-		if (is == null) {
-			return null;
-		}
-		String encoding = detectEncoding(is);
-		log.info("sitemap " + filename + " encoding detected: " + encoding);
-		is = getResourceAsStream(filename);
-		SiteMap sitemap = new SiteMap(is, encoding);
-		return sitemap;
-	}
-
-	private AtomicReference<SharpSystem> sharpSystemHolder = new AtomicReference<SharpSystem>(null);
-
-	public SharpSystem getSharpSystem() throws IOException {
-		SharpSystem sharpSystem = sharpSystemHolder.get();
-		if (sharpSystem == null) {
-			sharpSystem = new SharpSystem(this);
-			if (sharpSystemHolder.compareAndSet(null, sharpSystem)) {
-				return sharpSystem;
-			} else {
-				return sharpSystemHolder.get();
+		FinalWrapper<SiteMap> tempWrapper = indexSiteMap;
+		if (tempWrapper == null) {
+			synchronized(indexSiteMapLock) {
+				if (indexSiteMap == null) {
+					SiteMap result = null;
+					String filename = getIndexSiteMapName();
+					if (filename != null) {
+						result = SiteMap.create(this, filename);
+					}
+					indexSiteMap = new FinalWrapper<SiteMap>(result);
+				}
+				tempWrapper = indexSiteMap;
 			}
-		} else {
-			return sharpSystem;
 		}
+		return tempWrapper.value;
+	}
+
+	private final Object sharpSystemLock = new Object();
+	private FinalWrapper<SharpSystem> sharpSystem;
+	public SharpSystem getSharpSystem() throws IOException {
+		FinalWrapper<SharpSystem> tempWrapper = sharpSystem;
+		if (tempWrapper == null) {
+			synchronized(sharpSystemLock) {
+				if (sharpSystem == null) {
+					sharpSystem = new FinalWrapper<SharpSystem>(new SharpSystem(this));
+				}
+				tempWrapper = sharpSystem;
+			}
+		}
+		return tempWrapper.value;
 	}
 
 	/**
 	 * After close, the object can not be used any more.
 	 */
-	public void close() throws IOException {
+	public synchronized void close() throws IOException {
 		lazyLoadChunks = null;
 
 		entryCache = null;
@@ -561,9 +549,11 @@ public class CHMFile implements Closeable {
 		indexSiteMap = null;
 
 		sections = null;
+
+		RandomAccessFile fileAccess = this.fileAccess;
 		if (fileAccess != null) {
+			this.fileAccess = null;
 			fileAccess.close();
-			fileAccess = null;
 		}
 	}
 
@@ -763,8 +753,6 @@ public class CHMFile implements Closeable {
 	public Map<String, Object> getLangs() {
 		Map<String, Object> values = new HashMap<String, Object>();
 		try {
-			log.info(file.getName());
-
 			values.put("lang", lang);
 			values.put("lang_locale", WindowsLanguageID.getLocale(lang));
 			log.info(String.format("lang1 0x%04X %1s", lang, WindowsLanguageID.getLocale(lang)));
@@ -784,54 +772,16 @@ public class CHMFile implements Closeable {
 				}
 			}
 
-			byte[] buf = new byte[4096];
-			try {
-				LEInputStream in = new LEInputStream(getResourceAsStream("/$FIftiMain"));
-				in.read(buf, 0, 0x7a);
-				int codepage4 = in.read32();
-				log.info(String.format("codepage4 %05d", codepage4));
-				int lang4 = in.read32();
-				log.info(String.format("lang4 0x%04X %1s", lang4, WindowsLanguageID.getLocale(lang4)));
-			} catch(Exception ex) {
-				log.log(Level.SEVERE, "CHMFile.getLangs", ex);
-			}
-
-			try {
-				InputStream is = getResourceAsStream("/$OBJINST");
-				int len = is.read(buf);
-
-				LEInputStream in = new LEInputStream(new ByteArrayInputStream(buf, 0, len));
-				in.read32();
-				int entriesCount = in.read32();
-				int[] entryOffsets = new int[entriesCount];
-				int[] entrySizes = new int[entriesCount];
-				for (int i = 0; i < entriesCount; i++) {
-					entryOffsets[i] = in.read32();
-					entrySizes[i] = in.read32();
-				}
-
-				in.reset();
-				in.skip(entryOffsets[0]);
-				in.skip(0x18);
-				int codepage6 = in.read32();
-				log.info(String.format("codepage6 %05d", codepage6));
-				int lang6 = in.read32();
-				log.info(String.format("lang6 0x%04X %1s", lang6, WindowsLanguageID.getLocale(lang6)));
-
-				in.reset();
-				in.skip(entryOffsets[1]);
-				in.skip(0x14);
-				int codepage7 = in.read32();
-				log.info(String.format("codepage7 %05d", codepage7));
-				int lang7 = in.read32();
-				log.info(String.format("lang7 0x%04X %1s", lang7, WindowsLanguageID.getLocale(lang7)));
-
-			} catch(Exception ex) {
-				log.log(Level.SEVERE, "CHMFile.getLangs", ex);
-			}
+			byte[] buf = new byte[256];
+			LEInputStream in = new LEInputStream(getResourceAsStream("/$FIftiMain"));
+			in.read(buf, 0, 0x7a);
+			int codepage4 = in.read32();
+			log.info(String.format("codepage4 %05d", codepage4));
+			int lang4 = in.read32();
+			log.info(String.format("lang4 0x%04X %1s", lang4, WindowsLanguageID.getLocale(lang4)));
 
 		} catch(Exception ex) {
-			log.log(Level.SEVERE, "CHMFile.getLangs", ex);
+			log.throwing("CHMFile", "getLangs", ex);
 		}
 		return values;
 	}

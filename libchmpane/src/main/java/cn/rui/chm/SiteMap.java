@@ -11,21 +11,24 @@ import org.htmlparser.lexer.Lexer;
 import org.htmlparser.lexer.Page;
 import org.htmlparser.util.ParserException;
 import org.htmlparser.visitors.NodeVisitor;
+import org.mozilla.universalchardet.UniversalDetector;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.util.*;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * @see <a href="http://www.nongnu.org/chmspec/latest/Sitemap.html#HHC">HHC format</a>
+ */
 @EqualsAndHashCode
 @ToString
 public class SiteMap {
     private static Logger log = Logger.getLogger(SiteMap.class.getName());
 
     @Getter
-    private Item root;
+    private final Item root;
 
     SiteMap() {
         root = new Item();
@@ -39,7 +42,7 @@ public class SiteMap {
             NodeVisitor visitor = new SiteMapNodeVistor();
             parser.visitAllNodesWith(visitor);
         } catch (ParserException ex) {
-            log.log(Level.SEVERE,"SiteMap.SiteMap(Page page)", ex);
+            log.throwing("SiteMap", "SiteMap(Page page)", ex);
             throw new IOException("HTML Parser error");
         }
     }
@@ -56,6 +59,39 @@ public class SiteMap {
         this(new Page(new InputStreamSource(is, charset)));
     }
 
+    public static SiteMap create(CHMFile chm, String filename) throws IOException {
+        InputStream is = chm.getResourceAsStream(filename);
+        if (is == null) {
+            return null;
+        }
+        String charsetName = chm.getCharsetName();
+        if (charsetName == null) {
+            charsetName = detectCharset(is);
+            log.info("sitemap " + filename + " encoding detected: " + charsetName);
+        }
+        is = chm.getResourceAsStream(filename);
+        SiteMap sitemap = new SiteMap(is, charsetName);
+        return sitemap;
+    }
+
+    private static String detectCharset(InputStream is) throws IOException {
+        UniversalDetector detector = new UniversalDetector(null);
+
+        byte[] buf = new byte[512];
+        int nread;
+        while ((nread = is.read(buf)) > 0 && !detector.isDone()) {
+            detector.handleData(buf, 0, nread);
+        }
+
+        detector.dataEnd();
+        try {
+            is.close();
+        } catch (Exception ex) {
+        }
+
+        return detector.getDetectedCharset();
+    }
+
     @EqualsAndHashCode
     @ToString
     public static class Item {
@@ -69,8 +105,6 @@ public class SiteMap {
         private String newImage;
 
         private Map<String, String> params;
-        private List<Item> items;
-
         public Map<String, String> getParams() {
             if (params == null) {
                 return null;
@@ -78,6 +112,7 @@ public class SiteMap {
             return Collections.unmodifiableMap(params);
         }
 
+        private List<Item> items;
         public List<Item> getItems() {
             if (items == null) {
                 return null;
