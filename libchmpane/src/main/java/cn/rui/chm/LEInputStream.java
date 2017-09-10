@@ -107,7 +107,7 @@ class LEInputStream extends FilterInputStream {
         if ((b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8) < 0)
             throw new EOFException();
         return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24) 
-        		+ (b5 << 32) + (b6 << 40) + (b7 << 48) + (b8 << 56));
+        		+ ((long)b5 << 32) + ((long)b6 << 40) + ((long)b7 << 48) + ((long)b8 << 56));
 	}
 
 	public long read64BE() throws IOException {

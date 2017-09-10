@@ -73,7 +73,9 @@ public class SharpSystem {
             int code = in.read16();
             int dataLen = in.read16();
             byte[] data = new byte[dataLen];
-            in.read(data);
+            if (in.read(data) < data.length) {
+                throw new IOException("Unexpected end of entry[code=" + code + "] in file " + FILENAME);
+            }
             StringEntry stringEntry = StringEntry.build(code, data, charsetName);
             if (stringEntry != null) {
                 return stringEntry;
@@ -139,7 +141,7 @@ public class SharpSystem {
         }
     }
 
-    @EqualsAndHashCode
+    @EqualsAndHashCode(callSuper = true)
     @ToString
     @Getter
     public static class StringEntry extends Entry {

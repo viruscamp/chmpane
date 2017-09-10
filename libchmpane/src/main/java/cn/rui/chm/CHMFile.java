@@ -182,7 +182,7 @@ public class CHMFile implements Closeable {
 					chunk.type = DirectoryChunkType.IndexChunk;
 					return chunk;
 				}
-				LEInputStream in = new LEInputStream(createInputStream(chunkOffset + chunk.chunkNo * chunkSize, chunkSize));
+				LEInputStream in = new LEInputStream(createInputStream(chunkOffset + chunk.chunkNo * (long)chunkSize, chunkSize));
 				String chunkMagic = in.readUTF8(4);
 				if (DirectoryChunkType.IndexChunk.magic.equals(chunkMagic)) {
 					ArrayList<DirectoryChunk> children = new ArrayList<DirectoryChunk>();
@@ -730,7 +730,7 @@ public class CHMFile implements Closeable {
 				}
 
 				@Override
-				public int read(byte[] b, int off, int len) throws IOException, DataFormatException {
+				public int read(byte[] b, int off, int len) throws IOException {
 
 					if ( (bytesLeft <= 0) && (blockNo > endBlockNo) ) {
 						return -1;	// no more data
@@ -810,7 +810,9 @@ public class CHMFile implements Closeable {
 
 			byte[] buf = new byte[256];
 			LEInputStream in = new LEInputStream(getResourceAsStream("/$FIftiMain"));
-			in.read(buf, 0, 0x7a);
+			if (in.read(buf, 0, 0x7a) < 0x7a) {
+				throw new IOException("Unexpected end of file " + "/$FIftiMain");
+			}
 			int codepage4 = in.read32();
 			log.info(String.format("codepage4 %05d", codepage4));
 			int lang4 = in.read32();

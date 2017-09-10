@@ -449,26 +449,26 @@ public class WindowsLanguageID {
 	}
 
 	public static void main(String[] args) {
-		System.out.print(String.format("lcid count = %d\n", lcidToLocale.size()));
-		System.out.print(String.format("known lcid count = %d\n", lcidToCodePage.size()));
-		System.out.print(String.format("codepage count = %d\n", codePageToCharset.size()));
+		System.out.println(String.format("lcid count = %d", lcidToLocale.size()));
+		System.out.println(String.format("known lcid count = %d", lcidToCodePage.size()));
+		System.out.println(String.format("codepage count = %d", codePageToCharset.size()));
 		for (Map.Entry<Integer, Integer> entry : lcidToCodePage.entrySet()) {
 			int lcid = entry.getKey();
 			int codePage = entry.getValue();
 			Locale locale = getLocale(lcid);
 			Charset charset = getCharsetByCodePage(codePage);
-			System.out.print(String.format("lcid=%04X codepage=%4d locale=%s charset=%s\n", lcid, codePage, locale, charset));
+			System.out.println(String.format("lcid=%04X codepage=%4d locale=%s charset=%s", lcid, codePage, locale, charset));
 		}
 
 		System.out.println();
-		System.out.print(String.format("AvailableLocales count = %d\n", Locale.getAvailableLocales().length));
+		System.out.println(String.format("AvailableLocales count = %d", Locale.getAvailableLocales().length));
 		int matched = 0;
 		for (Locale locale : Locale.getAvailableLocales()) {
-			System.out.print(String.format("AvailableLocale %d %s\n", lcidToLocale.containsValue(locale)?1:0, locale));
+			System.out.println(String.format("AvailableLocale %d %s", lcidToLocale.containsValue(locale)?1:0, locale));
 			matched += lcidToLocale.containsValue(locale)?1:0;
 		}
-		System.out.print(String.format("matched locale count = %d\n", matched));
+		System.out.println(String.format("matched locale count = %d", matched));
 
-		System.out.print("charset for 0 " + getDefaultCharset(0));
+		System.out.println("charset for 0 " + getDefaultCharset(0));
 	}
 }

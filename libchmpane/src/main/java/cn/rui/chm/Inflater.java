@@ -200,9 +200,11 @@ class Inflater {
 				case LZX_BLOCKTYPE_UNCOMPRESSED: {
 					log.warning("LZXC meet LZX_BLOCKTYPE_UNCOMPRESSED");
 					intel_started = true; // because we can't assume otherwise
-					
-					if (bin.ensure(16) > 16);  // get up to 16 pad bits into the buffer
-						bin.skip(-2); 	// and align the bitstream! TODO what happens to the bitbuf/bitsLeft?
+
+					// get up to 16 pad bits into the buffer
+					if (bin.ensure(16) > 16) {
+						bin.skip(-2);    // and align the bitstream! TODO what happens to the bitbuf/bitsLeft?
+					}
 					r0 = bin.read32LE();
 					r1 = bin.read32LE();
 					r2 = bin.read32LE();
