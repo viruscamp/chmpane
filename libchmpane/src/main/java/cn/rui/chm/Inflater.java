@@ -344,7 +344,7 @@ class Inflater {
 				int curpos = intel_curpos;
 				intel_curpos += len;
 				for (int i = off; i < off + len - 10; ) {
-					if (buf[i ++] != 0xE8) {
+					if ((buf[i ++] & 0xff) != 0xE8) {
 						curpos ++;
 					} else {
 						int abs_off = (buf[i] & 0xff) |( (buf[i + 1] & 0xff) << 8) | 

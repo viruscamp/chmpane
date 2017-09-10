@@ -131,7 +131,7 @@ public class SharpSystem {
 
         public static HhpOption optionNameOf(String optionName) {
             for (HhpOption hhpOption : HhpOption.values()) {
-                if (hhpOption.optionName == optionName) {
+                if (hhpOption.optionName.equals(optionName)) {
                     return hhpOption;
                 }
             }

@@ -40,6 +40,7 @@ package cn.rui.chm;
 import java.io.*;
 import java.nio.charset.Charset;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
@@ -61,6 +62,10 @@ public class CHMFile implements Closeable {
 
 	// header info
 	private int version; // 3, 2
+	/**
+	 * It is the lower 32 bits of a 64-bit value representing the number of centiseconds since 1601-01-01 00:00:00 UTC, plus 42.
+	 * It is not useful as a timestamp, but it is useful as a semi-unique ID.
+	 */
 	private int timestamp;
 	private int lang; // Windows Language ID
 	private int lang2;
@@ -83,8 +88,7 @@ public class CHMFile implements Closeable {
 	private Map<String, ListingEntry> entryCache;
 	private List<String> resources;
 
-
-	private LazyLoadChunks lazyLoadChunks;
+	private volatile LazyLoadChunks lazyLoadChunks;
 	class LazyLoadChunks {
 		private Map<String, ListingEntry> entryCache;
 
@@ -106,14 +110,19 @@ public class CHMFile implements Closeable {
 		}
 
 		private DirectoryChunk getOrCreateChunk(int chunkNo, String firstName) {
-			synchronized (directoryChunks) {
-				DirectoryChunk chunk = directoryChunks[chunkNo];
-				if (chunk == null) {
-					chunk = new DirectoryChunk(chunkNo, firstName);
-					directoryChunks[chunkNo] = chunk;
+			DirectoryChunk chunk = directoryChunks[chunkNo];
+			if (chunk == null) {
+				synchronized (directoryChunks) {
+					// double-checked locking
+					chunk = directoryChunks[chunkNo];
+					if (chunk == null) {
+						chunk = new DirectoryChunk(chunkNo, firstName);
+						directoryChunks[chunkNo] = chunk;
+					}
+
 				}
-				return chunk;
 			}
+			return chunk;
 		}
 
 		public ListingEntry searchChunkRecursively(DirectoryChunk chunk, String name) throws IOException {
@@ -157,6 +166,10 @@ public class CHMFile implements Closeable {
 				return chunk;
 			}
 			synchronized (chunk) {
+				// double-checked locking
+				if (chunk.type != DirectoryChunkType.Unknown) {
+					return chunk;
+				}
 				if (chunk.chunkNo == -1) {
 					List<DirectoryChunk> children = new ArrayList<DirectoryChunk>(lastPMGLChunkNo - firstPMGLChunkNo + 1);
 					for (int chunkNo = firstPMGLChunkNo; chunkNo <= lastPMGLChunkNo; chunkNo++) {
@@ -237,14 +250,23 @@ public class CHMFile implements Closeable {
 			readChunkRecursively(rootIndexChunk);
 		}
 
-		public synchronized void listAllChunks() throws IOException {
-			if (completedChunks.get() < totalChunks) {
-				for (int i = firstPMGLChunkNo; i <= lastPMGLChunkNo; i++) {
-					DirectoryChunk chunk = getOrCreateChunk(i, null);
-					readChunk(chunk);
-				}
-				if (completedChunks.get() < totalChunks) {
-					lazyLoadChunksCompleted();
+		private final AtomicBoolean listAllChunksDone = new AtomicBoolean(false);
+		public void listAllChunks() throws IOException {
+			if (listAllChunksDone.get()) {
+				return;
+			}
+			synchronized (listAllChunksDone) {
+				// double-checked locking
+				if (listAllChunksDone.compareAndSet(false, true)) {
+					if (completedChunks.get() < totalChunks) {
+						for (int i = firstPMGLChunkNo; i <= lastPMGLChunkNo; i++) {
+							DirectoryChunk chunk = getOrCreateChunk(i, null);
+							readChunk(chunk);
+						}
+						if (completedChunks.get() < totalChunks) {
+							lazyLoadChunksCompleted();
+						}
+					}
 				}
 			}
 		}
@@ -292,23 +314,25 @@ public class CHMFile implements Closeable {
 		/** Step 1. CHM header  */
 		// The header length is 0x60 (96)
 		LEInputStream in = new LEInputStream(createInputStream(0, CHM_HEADER_LENGTH));
-		if ( ! in.readUTF8(4).equals("ITSF") )
+		if (!in.readUTF8(4).equals("ITSF")) {
 			throw new DataFormatException("CHM file should start with \"ITSF\"");
+		}
 
-		if ( (version = in.read32()) > 3)
+		if ((version = in.read32()) > 3) {
 			log.warning("CHM header version unexpected value " + version);
+		}
 
 		int length = in.read32();
 		in.read32(); // -1
 
-		timestamp = in.read32(); // big-endian DWORD?
-		log.info("CHM timestamp " + new Date(timestamp));
+		timestamp = in.read32();
+		log.info("CHM timestamp " + String.format("%04X", timestamp));
 		lang = in.read32();
 		log.info("CHM ITSF language " + WindowsLanguageID.getLocale(lang));
 
-		String guid1 = in.readGUID();	//.equals("7C01FD10-7BAA-11D0-9E0C-00A0-C922-E6EC");
+		String guid1 = in.readGUID(); // "7C01FD10-7BAA-11D0-9E0C-00A0-C922-E6EC"
 		//log.info("guid1 = " + guid1);
-		String guid2 = in.readGUID();	//.equals("7C01FD11-7BAA-11D0-9E0C-00A0-C922-E6EC");
+		String guid2 = in.readGUID(); // "7C01FD11-7BAA-11D0-9E0C-00A0-C922-E6EC"
 		//log.info("guid2 = " + guid2);
 
 		long off0 = in.read64();
@@ -325,16 +349,18 @@ public class CHMFile implements Closeable {
 		in = new LEInputStream(createInputStream(off0, (int) len0)); // len0 can't exceed 32-bit
 		in.read32(); // 0x01FE;
 		in.read32(); // 0;
-		if ( (fileLength = in.read64()) != fileAccess.length())
+		if ((fileLength = in.read64()) != fileAccess.length()) {
 			log.warning("CHM file may be corrupted, expect file length " + fileLength);
+		}
 		in.read32(); // 0;
 		in.read32(); // 0;
 		
 		/* Step 1.2 CHM header section 1: directory index header */
 		in = new LEInputStream(createInputStream(off1, CHM_DIRECTORY_HEADER_LENGTH));
 
-		if (! in.readUTF8(4).equals("ITSP") )
+		if (!in.readUTF8(4).equals("ITSP")) {
 			throw new DataFormatException("CHM directory header should start with \"ITSP\"");
+		}
 
 		in.read32(); // version
 		chunkOffset = off1 + in.read32(); // = 0x54
@@ -359,14 +385,15 @@ public class CHMFile implements Closeable {
 		in.read32(); // = -1
 		in.read32(); // = -1
 
-		if (chunkSize * totalChunks + CHM_DIRECTORY_HEADER_LENGTH != len1)
+		if (chunkSize * totalChunks + CHM_DIRECTORY_HEADER_LENGTH != len1) {
 			throw new DataFormatException("CHM directory list chunks size mismatch");
+		}
 
 		/* Step 2. CHM name list: content sections */
-		in = new LEInputStream(
-				getResourceAsStream("::DataSpace/NameList"));
-		if (in == null)
+		in = new LEInputStream(getResourceAsStream("::DataSpace/NameList"));
+		if (in == null) {
 			throw new DataFormatException("Missing ::DataSpace/NameList entry");
+		}
 		in.read16(); // length in 16-bit-word, = in.length() / 2
 		sections = new Section[in.read16()];
 		for (int i = 0; i < sections.length; i ++) {
@@ -375,7 +402,9 @@ public class CHMFile implements Closeable {
 				sections[i] = new Section();
 			} else if ("MSCompressed".equals(name)) {
 				sections[i] = new LZXCSection();
-			} else throw new DataFormatException("Unknown content section " + name);
+			} else {
+				throw new DataFormatException("Unknown content section " + name);
+			}
 			in.read16(); // = null
 		}
 
@@ -394,16 +423,23 @@ public class CHMFile implements Closeable {
 	/**
 	 * make sure to run it only once
 	 */
-	private synchronized void lazyLoadChunksCompleted() {
-		LazyLoadChunks lazyLoadChunks = this.lazyLoadChunks;
-		if (lazyLoadChunks != null) {
-			entryCache = lazyLoadChunks.entryCache;
+	private void lazyLoadChunksCompleted() {
+		if (lazyLoadChunks == null) {
+			return;
+		}
+		synchronized (this) {
+			// double-checked locking
+			if (lazyLoadChunks == null) {
+				return;
+			}
+			Map<String, ListingEntry> entryCache = lazyLoadChunks.entryCache;
 			List<String> resources = new ArrayList<String>(entryCache.size());
 			for (String name : entryCache.keySet()) {
 				if (name.startsWith("/")) {
 					resources.add(name);
 				}
 			}
+			this.entryCache = entryCache;
 			this.resources = Collections.unmodifiableList(resources);
 			this.lazyLoadChunks = null;
 		}
@@ -413,11 +449,13 @@ public class CHMFile implements Closeable {
 	 * Read len bytes from file beginning from offset.
 	 * Since it's really a ByteArrayInputStream, close() operation is optional
 	 */
-	private synchronized InputStream createInputStream(long offset, int len) throws IOException {
-		fileAccess.seek(offset);
-		byte[] b = new byte[len]; // TODO performance?
-		fileAccess.readFully(b);
-		return new ByteArrayInputStream(b);
+	private InputStream createInputStream(long offset, int len) throws IOException {
+		synchronized(fileAccess) {
+			fileAccess.seek(offset);
+			byte[] b = new byte[len]; // TODO performance?
+			fileAccess.readFully(b);
+			return new ByteArrayInputStream(b);
+		}
 	}
 
 	/**
@@ -448,8 +486,6 @@ public class CHMFile implements Closeable {
 			throw new NullPointerException("name");
 		}
 		ListingEntry entry = resolveEntry(name);
-		if (entry == null)
-			throw new FileNotFoundException(file + "#" + name);
 		Section section = sections[entry.section];
 		return section.resolveInputStream(entry.offset, entry.length);
 	}
@@ -727,7 +763,7 @@ public class CHMFile implements Closeable {
 		}
 	}
 
-	class ListingEntry {
+	static class ListingEntry {
 
 		String name;
 		int section;
