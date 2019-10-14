@@ -1,2 +1,5 @@
 spring.profiles.active: local
-#chm.mappings.7z: C:\Program Files\7-Zip\7-zip.chm
+chm:
+  scanDir: C:\Users\VirusCamp\Desktop\新建文件夹
+  mappings:
+    7-zip: C:\Program Files\7-Zip\7-zip.chm
