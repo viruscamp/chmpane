@@ -16,6 +16,7 @@ import org.mozilla.universalchardet.UniversalDetector;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -55,19 +56,19 @@ public class SiteMap {
         this(new Scanner(reader).useDelimiter("\\Z").next());
     }
 
-    public SiteMap(InputStream is, String charset) throws IOException {
-        this(new Page(new InputStreamSource(is, charset)));
+    public SiteMap(InputStream is, String charsetName) throws IOException {
+        this(new Page(new InputStreamSource(is, charsetName)));
     }
 
     public static SiteMap create(CHMFile chm, String filename) throws IOException {
         InputStream is = chm.getResourceAsStream(filename);
-        if (is == null) {
-            return null;
-        }
-        String charsetName = chm.getCharsetName();
-        if (charsetName == null) {
+        Charset charset = chm.getCharset();
+        String charsetName;
+        if (charset == null) {
             charsetName = detectCharset(is);
             log.info("sitemap " + filename + " encoding detected: " + charsetName);
+        } else {
+            charsetName = charset.name();
         }
         is = chm.getResourceAsStream(filename);
         SiteMap sitemap = new SiteMap(is, charsetName);

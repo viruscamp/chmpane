@@ -73,9 +73,17 @@ class LEInputStream extends FilterInputStream {
         int b2 = read();
         int b3 = read();
         int b4 = read();
-        if ((b1 | b2 | b3 | b4) < 0)
-            throw new EOFException();
-        return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24));
+		if ((b1 | b2 | b3 | b4) < 0)
+			throw new EOFException();
+        return parseBytesToInt((byte)b1, (byte)b2, (byte)b3, (byte)b4);
+	}
+
+	public static int parseBytesToInt(byte... bytes) {
+		int b1 = bytes[0];
+		int b2 = bytes[1];
+		int b3 = bytes[2];
+		int b4 = bytes[3];
+		return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24));
 	}
 	
 	/**

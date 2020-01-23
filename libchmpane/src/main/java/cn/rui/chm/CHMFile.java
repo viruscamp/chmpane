@@ -37,12 +37,16 @@
  */
 package cn.rui.chm;
 
+import lombok.Getter;
+import lombok.extern.java.Log;
+
 import java.io.*;
 import java.nio.charset.Charset;
+import java.text.MessageFormat;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Logger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author Rui Shen
@@ -52,13 +56,12 @@ import java.util.logging.Logger;
  * @see <a href="http://www.nongnu.org/chmspec/latest/Internal.html">Unofficial (Preliminary) HTML Help Specification</a>
  * @see <a href="http://www.cabextract.org.uk/libmspack/doc/structmschmd__header.html">mschmd_header Struct Reference</a>
  */
+@Log
 public class CHMFile implements Closeable {
 
 	public static final int CHM_HEADER_LENGTH = 0x60;
 
 	public static final int CHM_DIRECTORY_HEADER_LENGTH = 0x54;
-
-	private static Logger log = Logger.getLogger(CHMFile.class.getName());
 
 	// header info
 	private int version; // 3, 2
@@ -83,197 +86,201 @@ public class CHMFile implements Closeable {
 
 	RandomAccessFile fileAccess;
 
-	Charset charset;
+	private AtomicInteger completedChunks;
+	private DirectoryChunk[] directoryChunks;
+	private DirectoryChunk rootIndexChunk;
 
-	private Map<String, ListingEntry> entryCache;
-	private List<String> resources;
+	private final Map<String, ListingEntry> entryCache;
 
-	private volatile LazyLoadChunks lazyLoadChunks;
-	class LazyLoadChunks {
-		private Map<String, ListingEntry> entryCache;
-
-		private AtomicInteger completedChunks;
-		private DirectoryChunk[] directoryChunks;
-		private DirectoryChunk rootIndexChunk;
-
-		LazyLoadChunks(int rootIndexChunkNo, int totalChunks) {
-			//entryCache = new ConcurrentSkipListMap<String, ListingEntry>(String.CASE_INSENSITIVE_ORDER); // since 1.6
-			//entryCache = Collections.synchronizedMap(new TreeMap<String, ListingEntry>(String.CASE_INSENSITIVE_ORDER));
-			entryCache = new TreeMap<String, ListingEntry>(String.CASE_INSENSITIVE_ORDER);
-
-			completedChunks = new AtomicInteger(0);
-			directoryChunks = new DirectoryChunk[totalChunks];
-			rootIndexChunk = new DirectoryChunk(rootIndexChunkNo, null);
-			if (rootIndexChunkNo >= 0) {
-				directoryChunks[rootIndexChunkNo] = rootIndexChunk;
+	private final AtomicReference<Object> resourcesCache = new AtomicReference<Object>();
+	public List<String> getResources() throws IOException {
+		return Utils.lazyGet(this.resourcesCache, new Utils.SupplierWithException<List<String>, IOException>() {
+			public List<String> get() throws IOException {
+				if (rootIndexChunkNo >= 0) {
+					fillChunkRecursively(rootIndexChunk);
+				} else {
+					log.warning("should never goes here");
+				}
+				return collectResources();
 			}
-		}
+		});
+	}
 
-		private DirectoryChunk getOrCreateChunk(int chunkNo, String firstName) {
-			DirectoryChunk chunk = directoryChunks[chunkNo];
-			if (chunk == null) {
-				synchronized (directoryChunks) {
-					// double-checked locking
-					chunk = directoryChunks[chunkNo];
-					if (chunk == null) {
-						chunk = new DirectoryChunk(chunkNo, firstName);
-						directoryChunks[chunkNo] = chunk;
+	private List<String> collectResources() {
+		return Utils.lazyGet(this.resourcesCache, new Utils.Supplier<List<String>>() {
+			public List<String> get() {
+				List<String> list = new ArrayList<String>(entryCache.size());
+				for (String name : entryCache.keySet()) {
+					if (name.startsWith("/")) {
+						list.add(name);
 					}
+				}
+				//directoryChunks = null;
+				//rootIndexChunk = null;
+				return Collections.unmodifiableList(list);
+			}
+		});
+	}
 
+	public boolean isResourcesCompleted() {
+		return resourcesCache.get() != null;
+	}
+
+	private DirectoryChunk getOrCreateDirectoryChunk(int chunkNo, String firstName) {
+		DirectoryChunk chunk = directoryChunks[chunkNo];
+		if (chunk == null) {
+			synchronized (directoryChunks) {
+				// double-checked locking
+				chunk = directoryChunks[chunkNo];
+				if (chunk == null) {
+					chunk = new DirectoryChunk(chunkNo, firstName);
+					directoryChunks[chunkNo] = chunk;
 				}
 			}
+		}
+		return chunk;
+	}
+
+	public ListingEntry searchChunk(DirectoryChunk chunk, String name) throws IOException {
+		fillChunk(chunk);
+		if (chunk.content instanceof ListingChunk) {
+			List<ListingEntry> children = ((ListingChunk) chunk.content).children;
+			int idx = Collections.<ListingEntry>binarySearch(children, new ListingEntry(name),
+					new Comparator<ListingEntry>() {
+						public int compare(ListingEntry o1, ListingEntry o2) {
+							return String.CASE_INSENSITIVE_ORDER.compare(o1.name, o2.name);
+						}
+					}
+			);
+			if (idx >= 0) {
+				return children.get(idx);
+			}
+		} else if (chunk.content instanceof IndexChunk) {
+			List<DirectoryChunk> children = ((IndexChunk) chunk.content).children;
+			int idx = Collections.<DirectoryChunk>binarySearch(children, new DirectoryChunk(Integer.MIN_VALUE, name),
+					new Comparator<DirectoryChunk>() {
+						public int compare(DirectoryChunk o1, DirectoryChunk o2) {
+							return String.CASE_INSENSITIVE_ORDER.compare(o1.name, o2.name);
+						}
+					}
+			);
+			if (idx >= 0) {
+				return searchChunk(children.get(idx), name);
+			} else if (idx < -1) {
+				return searchChunk(children.get(-idx - 2), name);
+			}
+		}
+		return null;
+	}
+
+	private void chunkCompleted(DirectoryChunk chunk) {
+		if (completedChunks.incrementAndGet() == totalChunks) {
+			collectResources();
+		}
+	}
+
+	private DirectoryChunk fillFakeRootIndexChunk(DirectoryChunk chunk) throws IOException {
+		// fake root chunk , which rootChunkNo = -1,
+		List<DirectoryChunk> children = new ArrayList<DirectoryChunk>(lastPMGLChunkNo - firstPMGLChunkNo + 1);
+		for (int chunkNo = firstPMGLChunkNo; chunkNo <= lastPMGLChunkNo; chunkNo++) {
+			DirectoryChunk listingChunk = getOrCreateDirectoryChunk(chunkNo, null);
+			fillChunk(listingChunk);
+			children.add(listingChunk);
+		}
+		chunk.name = children.get(0).name;
+		chunk.content = new IndexChunk(children);
+		return chunk;
+	}
+
+	private DirectoryChunk fillChunk(DirectoryChunk chunk) throws IOException {
+		if (chunk.content != null) {
 			return chunk;
 		}
-
-		public ListingEntry searchChunkRecursively(DirectoryChunk chunk, String name) throws IOException {
-			readChunk(chunk);
-			if (chunk.type == DirectoryChunkType.ListingChunk) {
-				int idx = Collections.<ListingEntry>binarySearch(chunk.children, new ListingEntry(name),
-						new Comparator<ListingEntry>() {
-							public int compare(ListingEntry o1, ListingEntry o2) {
-								return String.CASE_INSENSITIVE_ORDER.compare(o1.name, o2.name);
-							}
-						}
-				);
-				if (idx >= 0) {
-					return (ListingEntry) chunk.children.get(idx);
-				}
-			} else if (chunk.type == DirectoryChunkType.IndexChunk) {
-				int idx = Collections.<DirectoryChunk>binarySearch(chunk.children, new DirectoryChunk(Integer.MIN_VALUE, name),
-						new Comparator<DirectoryChunk>() {
-							public int compare(DirectoryChunk o1, DirectoryChunk o2) {
-								return String.CASE_INSENSITIVE_ORDER.compare(o1.name, o2.name);
-							}
-						}
-				);
-				if (idx >= 0) {
-					return searchChunkRecursively((DirectoryChunk) chunk.children.get(idx), name);
-				} else if (idx < -1) {
-					return searchChunkRecursively((DirectoryChunk) chunk.children.get(-idx - 2), name);
-				}
-			}
-			return null;
-		}
-
-		private void chunkCompleted(DirectoryChunk chunk) {
-			if (completedChunks.incrementAndGet() == totalChunks) {
-				lazyLoadChunksCompleted();
-			}
-		}
-
-		private DirectoryChunk readChunk(DirectoryChunk chunk) throws IOException {
-			if (chunk.type != DirectoryChunkType.Unknown) {
+		synchronized (chunk) {
+			// double-checked locking
+			if (chunk.content != null) {
 				return chunk;
 			}
-			synchronized (chunk) {
-				// double-checked locking
-				if (chunk.type != DirectoryChunkType.Unknown) {
-					return chunk;
-				}
-				if (chunk.chunkNo == -1) {
-					List<DirectoryChunk> children = new ArrayList<DirectoryChunk>(lastPMGLChunkNo - firstPMGLChunkNo + 1);
-					for (int chunkNo = firstPMGLChunkNo; chunkNo <= lastPMGLChunkNo; chunkNo++) {
-						DirectoryChunk listingChunk = getOrCreateChunk(chunkNo, null);
-						readChunk(listingChunk);
-						children.add(listingChunk);
+			LEInputStream in = new LEInputStream(createInputStream(chunkOffset + chunk.chunkNo * (long)chunkSize, chunkSize));
+			String chunkMagic = in.readUTF8(4);
+			if (DirectoryChunkType.IndexChunk.magic.equals(chunkMagic)) {
+				ArrayList<DirectoryChunk> children = new ArrayList<DirectoryChunk>();
+				int freeSpace = in.read32(); // Length of free space and/or quickref area at end of directory chunk
+				// directory index entries, sorted by filename (case insensitive)
+				Set<Integer> addedChunkNos = new HashSet<Integer>();
+				while (in.available() > freeSpace) {
+					int subNameLen = in.readENC();
+					String subName = in.readUTF8(subNameLen);
+					int subChunkNo = in.readENC();
+					if (addedChunkNos.contains(subChunkNo)) {
+						// TODO nv3dcsy.chm root chunk may have a wrong freeSpace or we should not treat it like this
+						log.warning(MessageFormat.format(
+										"should never goes here file:{0} chunkNo:{1} freeSpace:{2} in.available():{3}",
+										this.file.getName(), chunk.chunkNo, freeSpace, in.available()));
+						if (!subName.isEmpty()) {
+							log.warning("haha");
+						}
+						break;
 					}
+					addedChunkNos.add(subChunkNo);
+					DirectoryChunk subChunk = getOrCreateDirectoryChunk(subChunkNo, subName);
+					children.add(subChunk);
+				}
+				if (chunk.name == null) {
 					chunk.name = children.get(0).name;
-					chunk.children = children;
-					chunk.type = DirectoryChunkType.IndexChunk;
-					return chunk;
 				}
-				LEInputStream in = new LEInputStream(createInputStream(chunkOffset + chunk.chunkNo * (long)chunkSize, chunkSize));
-				String chunkMagic = in.readUTF8(4);
-				if (DirectoryChunkType.IndexChunk.magic.equals(chunkMagic)) {
-					ArrayList<DirectoryChunk> children = new ArrayList<DirectoryChunk>();
-					int freeSpace = in.read32(); // Length of free space and/or quickref area at end of directory chunk
-					// directory index entries, sorted by filename (case insensitive)
+				chunk.content = new IndexChunk(children);
+				chunkCompleted(chunk);
+				return chunk;
+			} else if (DirectoryChunkType.ListingChunk.magic.equals(chunkMagic)) {
+				ArrayList<ListingEntry> entries = new ArrayList<ListingEntry>();
+				int freeSpace = in.read32(); // Length of free space and/or quickref area at end of directory chunk
+				in.read32(); // = 0;
+				in.read32(); // previousChunk #
+				in.read32(); // nextChunk #
+				synchronized (entryCache) {
 					while (in.available() > freeSpace) {
-						int subNameLen = in.readENC();
-						String subName = in.readUTF8(subNameLen);
-						int subChunkNo = in.readENC();
-						DirectoryChunk subChunk = getOrCreateChunk(subChunkNo, subName);
-						children.add(subChunk);
-					}
-					if (chunk.name == null) {
-						chunk.name = children.get(0).name;
-					}
-					chunk.children = children;
-					chunk.type = DirectoryChunkType.IndexChunk;
-					chunkCompleted(chunk);
-					return chunk;
-				} else if (DirectoryChunkType.ListingChunk.magic.equals(chunkMagic)) {
-					ArrayList<ListingEntry> entries = new ArrayList<ListingEntry>();
-					int freeSpace = in.read32(); // Length of free space and/or quickref area at end of directory chunk
-					in.read32(); // = 0;
-					in.read32(); // previousChunk #
-					in.read32(); // nextChunk #
-					synchronized (entryCache) {
-						while (in.available() > freeSpace) {
-							ListingEntry entry = new ListingEntry(in);
-							entries.add(entry);
-							entryCache.put(entry.name, entry);
-							if (entry.name.endsWith(".hhc") && entry.name.charAt(0) == '/') {
-								// .hhc entry is the navigation file
-								contentsSiteMapName = entry.name;
-								log.info("CHM contents sitemap " + contentsSiteMapName);
-							} else if (entry.name.endsWith(".hhk") && entry.name.charAt(0) == '/') {
-								// .hhk entry is the navigation file
-								indexSiteMapName = entry.name;
-								log.info("CHM index sitemap " + indexSiteMapName);
-							}
-						}
-					}
-					if (chunk.name == null) {
-						chunk.name = entries.get(0).name;
-					}
-					chunk.children = entries;
-					chunk.type = DirectoryChunkType.ListingChunk;
-					chunkCompleted(chunk);
-					return chunk;
-				} else {
-					throw new DataFormatException("Index Chunk magic mismatch, not 'PMGI' nor 'PMGL'");
-				}
-			}
-		}
-
-		private void readChunkRecursively(DirectoryChunk chunk) throws IOException {
-			readChunk(chunk);
-			if (chunk.type == DirectoryChunkType.IndexChunk) {
-				for (Object sub : chunk.children) {
-					readChunkRecursively((DirectoryChunk)sub);
-				}
-			}
-		}
-
-		public void listAllChunksRecursively() throws IOException {
-			readChunkRecursively(rootIndexChunk);
-		}
-
-		private final AtomicBoolean listAllChunksDone = new AtomicBoolean(false);
-		public void listAllChunks() throws IOException {
-			if (listAllChunksDone.get()) {
-				return;
-			}
-			synchronized (listAllChunksDone) {
-				// double-checked locking
-				if (listAllChunksDone.compareAndSet(false, true)) {
-					if (completedChunks.get() < totalChunks) {
-						for (int i = firstPMGLChunkNo; i <= lastPMGLChunkNo; i++) {
-							DirectoryChunk chunk = getOrCreateChunk(i, null);
-							readChunk(chunk);
-						}
-						if (completedChunks.get() < totalChunks) {
-							lazyLoadChunksCompleted();
-						}
+						ListingEntry entry = new ListingEntry(in);
+						entries.add(entry);
+						entryCache.put(entry.name, entry);
 					}
 				}
+				if (chunk.name == null) {
+					chunk.name = entries.get(0).name;
+				}
+				chunk.content = new ListingChunk(entries);
+				chunkCompleted(chunk);
+				return chunk;
+			} else {
+				throw new DataFormatException("Index Chunk magic mismatch, '" + chunkMagic +  "' is not 'PMGI' nor 'PMGL'");
 			}
 		}
 	}
 
+	private void fillChunkRecursively(DirectoryChunk chunk) throws IOException {
+		fillChunk(chunk);
+		if (chunk.content instanceof IndexChunk) {
+			for (DirectoryChunk sub : ((IndexChunk) chunk.content).children) {
+				fillChunkRecursively(sub);
+			}
+		}
+	}
+
+	/**
+	 * Resovle entry by name, using cache and index
+	 */
+	private ListingEntry resolveEntry(String name) throws IOException {
+		ListingEntry entry = entryCache.get(name);
+		if (entry == null && !isResourcesCompleted()) {
+			entry = searchChunk(rootIndexChunk, name);
+		}
+		if (entry == null) {
+			throw new FileNotFoundException(file + ": " + name);
+		}
+		return entry;
+	}
+
 	enum DirectoryChunkType {
-		Unknown(""),
 		ListingChunk("PMGL"),
 		IndexChunk("PMGI");
 
@@ -285,16 +292,39 @@ public class CHMFile implements Closeable {
 	}
 
 	static class DirectoryChunk {
-		int chunkNo;
+		final int chunkNo;
 		String name;
 
-		DirectoryChunkType type;
-		List children;
+		static abstract class Content {
+			abstract DirectoryChunkType getType();
+		}
+		Content content;
 
 		DirectoryChunk(int chunkNo, String name) {
 			this.chunkNo = chunkNo;
 			this.name = name;
-			this.type = DirectoryChunkType.Unknown;
+		}
+	}
+
+	static class ListingChunk extends DirectoryChunk.Content {
+		@Override
+		public DirectoryChunkType getType() {
+			return DirectoryChunkType.ListingChunk;
+		}
+		final List<ListingEntry> children;
+		ListingChunk(List<ListingEntry> children) {
+			this.children = children;
+		}
+	}
+
+	static class IndexChunk extends DirectoryChunk.Content {
+		@Override
+		public DirectoryChunkType getType() {
+			return DirectoryChunkType.IndexChunk;
+		}
+		final List<DirectoryChunk> children;
+		IndexChunk(List<DirectoryChunk> children) {
+			this.children = children;
 		}
 	}
 
@@ -313,91 +343,100 @@ public class CHMFile implements Closeable {
 
 		/** Step 1. CHM header  */
 		// The header length is 0x60 (96)
-		LEInputStream in = new LEInputStream(createInputStream(0, CHM_HEADER_LENGTH));
-		if (!in.readUTF8(4).equals("ITSF")) {
+		LEInputStream inHeader = new LEInputStream(createInputStream(0, CHM_HEADER_LENGTH));
+		if (!inHeader.readUTF8(4).equals("ITSF")) {
 			throw new DataFormatException("CHM file should start with \"ITSF\"");
 		}
 
-		if ((version = in.read32()) > 3) {
+		if ((version = inHeader.read32()) > 3) {
 			log.warning("CHM header version unexpected value " + version);
 		}
 
-		int length = in.read32();
-		in.read32(); // -1
+		int length = inHeader.read32();
+		inHeader.read32(); // -1
 
-		timestamp = in.read32();
+		timestamp = inHeader.read32();
 		log.info("CHM timestamp " + String.format("%04X", timestamp));
-		lang = in.read32();
+		lang = inHeader.read32();
 		log.info("CHM ITSF language " + WindowsLanguageID.getLocale(lang));
 
-		String guid1 = in.readGUID(); // "7C01FD10-7BAA-11D0-9E0C-00A0-C922-E6EC"
+		String guid1 = inHeader.readGUID(); // "7C01FD10-7BAA-11D0-9E0C-00A0-C922-E6EC"
 		//log.info("guid1 = " + guid1);
-		String guid2 = in.readGUID(); // "7C01FD11-7BAA-11D0-9E0C-00A0-C922-E6EC"
+		String guid2 = inHeader.readGUID(); // "7C01FD11-7BAA-11D0-9E0C-00A0-C922-E6EC"
 		//log.info("guid2 = " + guid2);
 
-		long off0 = in.read64();
-		long len0 = in.read64();
-		long off1 = in.read64();
-		long len1 = in.read64();
+		long off0 = inHeader.read64();
+		long len0 = inHeader.read64();
+		long off1 = inHeader.read64();
+		long len1 = inHeader.read64();
 
 		// if the header length is really 0x60, read the final QWORD
 		// or the content should be immediate after header section 1
-		contentOffset = (length >= CHM_HEADER_LENGTH) ? in.read64() : (off1 + len1);
+		contentOffset = (length >= CHM_HEADER_LENGTH) ? inHeader.read64() : (off1 + len1);
 		log.fine("CHM content offset " + contentOffset);
 
 		/* Step 1.1 (Optional)  CHM header section 0 */
-		in = new LEInputStream(createInputStream(off0, (int) len0)); // len0 can't exceed 32-bit
-		in.read32(); // 0x01FE;
-		in.read32(); // 0;
-		if ((fileLength = in.read64()) != fileAccess.length()) {
+		LEInputStream inHeader0 = new LEInputStream(createInputStream(off0, (int) len0)); // len0 can't exceed 32-bit
+		inHeader0.read32(); // 0x01FE;
+		inHeader0.read32(); // 0;
+		if ((fileLength = inHeader0.read64()) != fileAccess.length()) {
 			log.warning("CHM file may be corrupted, expect file length " + fileLength);
 		}
-		in.read32(); // 0;
-		in.read32(); // 0;
+		inHeader0.read32(); // 0;
+		inHeader0.read32(); // 0;
 		
 		/* Step 1.2 CHM header section 1: directory index header */
-		in = new LEInputStream(createInputStream(off1, CHM_DIRECTORY_HEADER_LENGTH));
+		LEInputStream inDirectory = new LEInputStream(createInputStream(off1, CHM_DIRECTORY_HEADER_LENGTH));
 
-		if (!in.readUTF8(4).equals("ITSP")) {
-			throw new DataFormatException("CHM directory header should start with \"ITSP\"");
+		if (!inDirectory.readUTF8(4).equals("ITSP")) {
+			throw new DataFormatException("CHM directory header should start with 'ITSP'");
 		}
 
-		in.read32(); // version
-		chunkOffset = off1 + in.read32(); // = 0x54
-		in.read32(); // = 0x0a
-		chunkSize = in.read32(); // 0x1000
-		quickRef = 1 + (1 << in.read32()); // = 1 + (1 << quickRefDensity )
-		depthOfIndexTree = in.read32(); // depth of index tree, 1: no index, 2: one level of PMGI chunks
+		inDirectory.read32(); // version
+		chunkOffset = off1 + inDirectory.read32(); // = 0x54
+		inDirectory.read32(); // = 0x0a
+		chunkSize = inDirectory.read32(); // 0x1000
+		quickRef = 1 + (1 << inDirectory.read32()); // = 1 + (1 << quickRefDensity )
+		depthOfIndexTree = inDirectory.read32(); // depth of index tree, 1: no index, 2: one level of PMGI chunks
 
-		rootIndexChunkNo = in.read32();	// chunk number of root, -1: none
-		firstPMGLChunkNo = in.read32();
-		lastPMGLChunkNo = in.read32();
-		in.read32(); // = -1
-		totalChunks = in.read32();
-		lang2 = in.read32(); // language code
+		rootIndexChunkNo = inDirectory.read32();	// chunk number of root, -1: none
+		firstPMGLChunkNo = inDirectory.read32();
+		lastPMGLChunkNo = inDirectory.read32();
+		inDirectory.read32(); // = -1
+		totalChunks = inDirectory.read32();
+		lang2 = inDirectory.read32(); // language code
 		log.info("CHM ITSP language " + WindowsLanguageID.getLocale(lang2));
 
-		lazyLoadChunks = new LazyLoadChunks(rootIndexChunkNo, totalChunks);
-
-		in.readGUID(); //.equals("5D02926A-212E-11D0-9DF9-00A0-C922-E6EC"))
-		in.read32(); // = x54
-		in.read32(); // = -1
-		in.read32(); // = -1
-		in.read32(); // = -1
+		inDirectory.readGUID(); //.equals("5D02926A-212E-11D0-9DF9-00A0-C922-E6EC"))
+		inDirectory.read32(); // = x54
+		inDirectory.read32(); // = -1
+		inDirectory.read32(); // = -1
+		inDirectory.read32(); // = -1
 
 		if (chunkSize * totalChunks + CHM_DIRECTORY_HEADER_LENGTH != len1) {
 			throw new DataFormatException("CHM directory list chunks size mismatch");
 		}
 
+		// init chunk cache
+		entryCache = new ConcurrentSkipListMap<String, ListingEntry>(String.CASE_INSENSITIVE_ORDER);
+		completedChunks = new AtomicInteger(0);
+		directoryChunks = new DirectoryChunk[totalChunks];
+		rootIndexChunk = new DirectoryChunk(rootIndexChunkNo, null);
+		if (rootIndexChunkNo >= 0) {
+			directoryChunks[rootIndexChunkNo] = rootIndexChunk;
+		} else {
+			fillFakeRootIndexChunk(rootIndexChunk);
+		}
+
 		/* Step 2. CHM name list: content sections */
-		in = new LEInputStream(getResourceAsStream("::DataSpace/NameList"));
-		if (in == null) {
+		LEInputStream inNameList = new LEInputStream(getResourceAsStream("::DataSpace/NameList"));
+		if (inNameList == null) {
 			throw new DataFormatException("Missing ::DataSpace/NameList entry");
 		}
-		in.read16(); // length in 16-bit-word, = in.length() / 2
-		sections = new Section[in.read16()];
+		inNameList.read16(); // length in 16-bit-word, = in.length() / 2
+		sections = new Section[inNameList.read16()];
 		for (int i = 0; i < sections.length; i ++) {
-			String name = in.readUTF16(in.read16() << 1);
+			String name = inNameList.readUTF16(inNameList.read16() << 1);
 			if ("Uncompressed".equals(name)) {
 				sections[i] = new Section();
 			} else if ("MSCompressed".equals(name)) {
@@ -405,44 +444,14 @@ public class CHMFile implements Closeable {
 			} else {
 				throw new DataFormatException("Unknown content section " + name);
 			}
-			in.read16(); // = null
+			inNameList.read16(); // = null
 		}
 
-		// read LCID from #SYSYTEM then translate it to Charset
-		charset = SharpSystem.getCharset(this);
-	}
-
-	public Charset getCharset() {
-		return charset;
-	}
-
-	public String getCharsetName() {
-		return (charset != null) ? charset.name() : null;
-	}
-
-	/**
-	 * make sure to run it only once
-	 */
-	private void lazyLoadChunksCompleted() {
-		if (lazyLoadChunks == null) {
-			return;
+		InputStream inSharpSystem = getResourceAsStream(SharpSystem.FILENAME);
+		if (inSharpSystem == null) {
+			throw new DataFormatException("Missing " + SharpSystem.FILENAME + " entry");
 		}
-		synchronized (this) {
-			// double-checked locking
-			if (lazyLoadChunks == null) {
-				return;
-			}
-			Map<String, ListingEntry> entryCache = lazyLoadChunks.entryCache;
-			List<String> resources = new ArrayList<String>(entryCache.size());
-			for (String name : entryCache.keySet()) {
-				if (name.startsWith("/")) {
-					resources.add(name);
-				}
-			}
-			this.entryCache = entryCache;
-			this.resources = Collections.unmodifiableList(resources);
-			this.lazyLoadChunks = null;
-		}
+		sharpSystem = new SharpSystem(inSharpSystem);
 	}
 
 	/**
@@ -459,26 +468,6 @@ public class CHMFile implements Closeable {
 	}
 
 	/**
-	 * Resovle entry by name, using cache and index
-	 */
-	private ListingEntry resolveEntry(String name) throws IOException {
-		ListingEntry entry;
-
-		LazyLoadChunks lazyLoadChunks = this.lazyLoadChunks;
-		if (lazyLoadChunks != null) {
-			entry = lazyLoadChunks.searchChunkRecursively(lazyLoadChunks.rootIndexChunk, name);
-		} else {
-			entry = entryCache.get(name);
-		}
-
-		if (entry == null) {
-			throw new FileNotFoundException(file + "#" + name);
-		}
-
-		return entry;
-	}
-
-	/**
 	 * Get an InputStream object for the named resource in the CHM.
 	 */
 	public InputStream getResourceAsStream(String name) throws IOException {
@@ -490,100 +479,57 @@ public class CHMFile implements Closeable {
 		return section.resolveInputStream(entry.offset, entry.length);
 	}
 
-	public List<String> list() throws IOException {
-		LazyLoadChunks lazyLoadChunks = this.lazyLoadChunks;
-		if (lazyLoadChunks != null) {
-			lazyLoadChunks.listAllChunks();
-		}
-		return resources;
+	@Getter
+	private final SharpSystem sharpSystem;
+
+	public Charset getCharset() {
+		return sharpSystem.getCharset();
 	}
 
-	private volatile String contentsSiteMapName; // *.hhc
-	public String getContentsSiteMapName() throws IOException {
-		if (contentsSiteMapName != null) {
-			return contentsSiteMapName;
+	private SiteMap createSiteMap(String filename) throws IOException {
+		if (filename == null) {
+			return null;
 		}
-		list();
-		return contentsSiteMapName;
+		if (!filename.startsWith("/")) {
+			filename = "/" + filename;
+		}
+		return SiteMap.create(CHMFile.this, filename);
 	}
 
-	private final Object contentsSiteMapLock = new Object();
-	private FinalWrapper<SiteMap> contentsSiteMap;
+	// *.hhc
+	public String getContentsFileName() {
+		return sharpSystem.getProperty(SharpSystem.HhpOption.ContentsFile);
+	}
+
+	private final AtomicReference<Object> contentsSiteMapCache = new AtomicReference<Object>();
 	public SiteMap getContentsSiteMap() throws IOException {
-		FinalWrapper<SiteMap> tempWrapper = contentsSiteMap;
-		if (tempWrapper == null) {
-			synchronized(contentsSiteMapLock) {
-				if (contentsSiteMap == null) {
-					SiteMap result = null;
-					String filename = getContentsSiteMapName();
-					if (filename != null) {
-						result = SiteMap.create(this, filename);
-					}
-					contentsSiteMap = new FinalWrapper<SiteMap>(result);
-				}
-				tempWrapper = contentsSiteMap;
+		return Utils.lazyGet(contentsSiteMapCache, new Utils.SupplierWithException<SiteMap, IOException>() {
+			@Override
+			public SiteMap get() throws IOException {
+				return createSiteMap(getContentsFileName());
 			}
-		}
-		return tempWrapper.value;
+		});
 	}
 
-	private volatile String indexSiteMapName; // *.hhk
-	public String getIndexSiteMapName() throws IOException {
-		if (indexSiteMapName != null) {
-			return indexSiteMapName;
-		}
-		list();
-		return indexSiteMapName;
+	// *.hhk
+	public String getIndexFileName() {
+		return sharpSystem.getProperty(SharpSystem.HhpOption.IndexFile);
 	}
 
-	private final Object indexSiteMapLock = new Object();
-	private FinalWrapper<SiteMap> indexSiteMap;
+	private final AtomicReference<Object> indexSiteMapCache = new AtomicReference<Object>();
 	public SiteMap getIndexSiteMap() throws IOException {
-		FinalWrapper<SiteMap> tempWrapper = indexSiteMap;
-		if (tempWrapper == null) {
-			synchronized(indexSiteMapLock) {
-				if (indexSiteMap == null) {
-					SiteMap result = null;
-					String filename = getIndexSiteMapName();
-					if (filename != null) {
-						result = SiteMap.create(this, filename);
-					}
-					indexSiteMap = new FinalWrapper<SiteMap>(result);
-				}
-				tempWrapper = indexSiteMap;
+		return Utils.lazyGet(indexSiteMapCache, new Utils.SupplierWithException<SiteMap, IOException>() {
+			@Override
+			public SiteMap get() throws IOException {
+				return createSiteMap(getIndexFileName());
 			}
-		}
-		return tempWrapper.value;
-	}
-
-	private final Object sharpSystemLock = new Object();
-	private FinalWrapper<SharpSystem> sharpSystem;
-	public SharpSystem getSharpSystem() throws IOException {
-		FinalWrapper<SharpSystem> tempWrapper = sharpSystem;
-		if (tempWrapper == null) {
-			synchronized(sharpSystemLock) {
-				if (sharpSystem == null) {
-					sharpSystem = new FinalWrapper<SharpSystem>(new SharpSystem(this));
-				}
-				tempWrapper = sharpSystem;
-			}
-		}
-		return tempWrapper.value;
+		});
 	}
 
 	/**
 	 * After close, the object can not be used any more.
 	 */
 	public synchronized void close() throws IOException {
-		lazyLoadChunks = null;
-
-		entryCache = null;
-		resources = null;
-		contentsSiteMapName = null;
-		indexSiteMapName = null;
-		contentsSiteMap = null;
-		indexSiteMap = null;
-
 		sections = null;
 
 		RandomAccessFile fileAccess = this.fileAccess;
@@ -598,7 +544,6 @@ public class CHMFile implements Closeable {
 	}
 
 	class Section {
-
 		public InputStream resolveInputStream(long off, int len) throws IOException {
 			return createInputStream(contentOffset + off, len);
 		}
@@ -764,7 +709,6 @@ public class CHMFile implements Closeable {
 	}
 
 	static class ListingEntry {
-
 		String name;
 		int section;
 		long offset;
@@ -797,16 +741,10 @@ public class CHMFile implements Closeable {
 			values.put("lang2_locale", WindowsLanguageID.getLocale(lang2));
 			log.info(String.format("lang2 0x%04X %1s", lang2, WindowsLanguageID.getLocale(lang2)));
 
-			SharpSystem sharpSystem = getSharpSystem();
-			for (SharpSystem.Entry entry : sharpSystem.getEntries()) {
-				if (entry.getCode() == 4) {
-					int lang3 = intFromBytes(entry.getData());
-					values.put("lang3", lang3);
-					values.put("lang3_locale", WindowsLanguageID.getLocale(lang3));
-					log.info(String.format("lang3 0x%04X %1s", lang3, WindowsLanguageID.getLocale(lang3)));
-					break;
-				}
-			}
+			int lang3 = sharpSystem.getLcid();
+			values.put("lang3", lang3);
+			values.put("lang3_locale", WindowsLanguageID.getLocale(lang3));
+			log.info(String.format("lang3 0x%04X %1s", lang3, WindowsLanguageID.getLocale(lang3)));
 
 			byte[] buf = new byte[256];
 			LEInputStream in = new LEInputStream(getResourceAsStream("/$FIftiMain"));
@@ -814,23 +752,17 @@ public class CHMFile implements Closeable {
 				throw new IOException("Unexpected end of file " + "/$FIftiMain");
 			}
 			int codepage4 = in.read32();
+			values.put("codepage4", codepage4);
 			log.info(String.format("codepage4 %05d", codepage4));
 			int lang4 = in.read32();
+			values.put("lang4", lang4);
+			values.put("lang4_locale", WindowsLanguageID.getLocale(lang4));
 			log.info(String.format("lang4 0x%04X %1s", lang4, WindowsLanguageID.getLocale(lang4)));
 
 		} catch(Exception ex) {
 			log.throwing("CHMFile", "getLangs", ex);
 		}
 		return values;
-	}
-
-	private int intFromBytes(byte[] bytes) {
-		int value= 0;
-		for (int i = 0; i < 4; i++) {
-			int shift = i * 8;
-			value += (bytes[i] & 0x000000FF) << shift;
-		}
-		return value;
 	}
 
 	public static void main(String[]argv) throws Exception {
@@ -841,7 +773,7 @@ public class CHMFile implements Closeable {
 
 		CHMFile chm = new CHMFile(argv[0]);
 		if (argv.length == 1) {
-			for (String file: chm.list() ){
+			for (String file: chm.getResources() ){
 				System.out.println(file);
 			}
 		} else {

@@ -134,7 +134,7 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 		split.setDividerSize(2);
 		add(split, BorderLayout.CENTER);
 
-		String siteMapName = Handler.getCHMFile(baseURL).getContentsSiteMapName();
+		String siteMapName = Handler.getCHMFile(baseURL).getContentsFileName();
 		
 		factory = new SiteMapFactory(this);
 		if (siteMapName != null) {

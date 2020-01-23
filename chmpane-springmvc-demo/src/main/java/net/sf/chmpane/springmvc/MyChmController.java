@@ -32,7 +32,7 @@ public class MyChmController extends ChmController {
             File dir = new File(scanDir);
             File[] chmfiles = dir.listFiles(new FileFilter() {
                 public boolean accept(File f) {
-                    return f.isFile() && f.getName().endsWith(CHM_EXT);
+                    return f.isFile() && f.getName().toLowerCase().endsWith(CHM_EXT);
                 }
             });
             for (File chmfile : chmfiles) {
@@ -44,7 +44,6 @@ public class MyChmController extends ChmController {
                     log.error(MessageFormat.format("chmController.addMapping fail: {0} {1}", name, chmfile.getAbsolutePath()), ex);
                 }
             }
-
         }
         if (chmConfig.getMappings() != null) {
             for (Map.Entry<String, String> e : chmConfig.getMappings().entrySet()) {

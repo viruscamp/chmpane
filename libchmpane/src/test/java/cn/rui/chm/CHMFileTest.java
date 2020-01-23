@@ -10,7 +10,7 @@ public class CHMFileTest extends TestCase {
 
 	public void testList() throws Exception {
 		CHMFile chm = new CHMFile("E:/LIB/BOOKS/2002,0596004087,2,Cole.CHM");
-		for (String file: chm.list()) {
+		for (String file: chm.getResources()) {
 			System.out.println(file);
 		}
 		chm.close();
@@ -31,7 +31,7 @@ public class CHMFileTest extends TestCase {
 		CHMFile chm = new CHMFile("E:/LIB/BOOKS/2005,0321334612,McAffer.CHM");
 		byte[]buf = new byte[1024];
 		long t0 = System.currentTimeMillis();
-		for( String filename: chm.list()) {
+		for( String filename: chm.getResources()) {
 			InputStream in = chm.getResourceAsStream(filename);
 			while ( (in.read(buf)) >= 0) {
 				// 

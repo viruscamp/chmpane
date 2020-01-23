@@ -79,7 +79,7 @@ public class ChmController {
     public String frames(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
         SharpSystem sharpSystem = chm.getSharpSystem();
-        String defaultTopic = sharpSystem.getProperties().get(SharpSystem.HhpOption.DefaultTopic);
+        String defaultTopic = sharpSystem.getProperty(SharpSystem.HhpOption.DefaultTopic);
         return "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \n" +
                 "    \"http://www.w3.org/TR/html4/frameset.dtd\">" +
                 "<html>\n" +
@@ -100,7 +100,7 @@ public class ChmController {
     @ResponseBody
     public List<String> listJson(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        return chm.list();
+        return chm.getResources();
     }
 
     @RequestMapping(value = "/{path}/list", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
@@ -109,7 +109,7 @@ public class ChmController {
         CHMFile chm = getChm(path);
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'></head><body><ul>\n");
-        for (String filename : chm.list()) {
+        for (String filename : chm.getResources()) {
             sb.append("<li><a href='." + filename + "'>" + filename + "</a></li>\n");
         }
         sb.append("</ul></body></html>");
@@ -189,7 +189,7 @@ public class ChmController {
     @RequestMapping(value = "/{path}/sitemap.hhc", method = RequestMethod.GET)
     public void siteMapHhc(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
         CHMFile chm = getChm(path);
-        file(chm, chm.getContentsSiteMapName(), response);
+        file(chm, chm.getContentsFileName(), response);
     }
 
     @RequestMapping(value = "/{path}/sharp-system", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
