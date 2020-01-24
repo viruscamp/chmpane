@@ -29,7 +29,7 @@ public class SharpSystem {
             entries.add(entry);
             if (entry.code == NonStringEntryCode.Entry4.code) {
                 // entry.data.size() must be >= 4
-                lcid = LEInputStream.parseBytesToInt(entry.data);
+                lcid = LEInputStream.bytesToInt(entry.data);
                 lcidRead = true;
             }
         }

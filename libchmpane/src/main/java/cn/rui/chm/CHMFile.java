@@ -207,22 +207,10 @@ public class CHMFile implements Closeable {
 				ArrayList<DirectoryChunk> children = new ArrayList<DirectoryChunk>();
 				int freeSpace = in.read32(); // Length of free space and/or quickref area at end of directory chunk
 				// directory index entries, sorted by filename (case insensitive)
-				Set<Integer> addedChunkNos = new HashSet<Integer>();
 				while (in.available() > freeSpace) {
 					int subNameLen = in.readENC();
 					String subName = in.readUTF8(subNameLen);
 					int subChunkNo = in.readENC();
-					if (addedChunkNos.contains(subChunkNo)) {
-						// TODO nv3dcsy.chm root chunk may have a wrong freeSpace or we should not treat it like this
-						log.warning(MessageFormat.format(
-										"should never goes here file:{0} chunkNo:{1} freeSpace:{2} in.available():{3}",
-										this.file.getName(), chunk.chunkNo, freeSpace, in.available()));
-						if (!subName.isEmpty()) {
-							log.warning("haha");
-						}
-						break;
-					}
-					addedChunkNos.add(subChunkNo);
 					DirectoryChunk subChunk = getOrCreateDirectoryChunk(subChunkNo, subName);
 					children.add(subChunk);
 				}
@@ -486,14 +474,19 @@ public class CHMFile implements Closeable {
 		return sharpSystem.getCharset();
 	}
 
+	public static String normalizeFilename(String filename) {
+		filename = filename.replace('\\', '/');
+		if (!filename.startsWith("/")) {
+			filename = "/" + filename;
+		}
+		return filename;
+	}
+
 	private SiteMap createSiteMap(String filename) throws IOException {
 		if (filename == null) {
 			return null;
 		}
-		if (!filename.startsWith("/")) {
-			filename = "/" + filename;
-		}
-		return SiteMap.create(CHMFile.this, filename);
+		return SiteMap.create(CHMFile.this, normalizeFilename(filename));
 	}
 
 	// *.hhc
