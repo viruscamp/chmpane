@@ -80,15 +80,19 @@ public class ChmController {
         CHMFile chm = getChm(path);
         SharpSystem sharpSystem = chm.getSharpSystem();
         String defaultTopic = sharpSystem.getProperty(SharpSystem.HhpOption.DefaultTopic);
+        String contentsFileName = chm.getContentsFileName();
+        String title = sharpSystem.getProperty(SharpSystem.HhpOption.Title);
         return "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \n" +
                 "    \"http://www.w3.org/TR/html4/frameset.dtd\">" +
                 "<html>\n" +
                 "<head>\n" +
                 "    <meta charset='utf-8'>\n" +
-                "    <title>" + path + ".chm</title>\n" +
+                "    <title>" + (title != null ? title : (path + ".chm")) + "</title>\n" +
                 "</head>\n" +
+                ((contentsFileName == null) ?
+                "<frameset cols='*'>\n" :
                 "<frameset cols='20%,*'>\n" +
-                "    <frame name='sitemap' src='sitemap.html' />\n" +
+                "    <frame name='sitemap' src='sitemap.html' />\n") +
                 "    <frame name='content' " +
                 ((defaultTopic == null) ? "" : ("src='" + defaultTopic + "'")) +
                 "/>\n" +

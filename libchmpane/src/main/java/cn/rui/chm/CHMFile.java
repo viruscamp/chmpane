@@ -490,8 +490,22 @@ public class CHMFile implements Closeable {
 	}
 
 	// *.hhc
-	public String getContentsFileName() {
-		return sharpSystem.getProperty(SharpSystem.HhpOption.ContentsFile);
+	private final AtomicReference<Object> contentsFileNameCache = new AtomicReference<Object>();
+	public String getContentsFileName() throws IOException {
+		return Utils.lazyGet(contentsFileNameCache, new Utils.SupplierWithException<String, IOException>() {
+			@Override
+			public String get() throws IOException {
+				String name = sharpSystem.getProperty(SharpSystem.HhpOption.ContentsFile);
+				if (name == null) {
+					for(String resource : getResources()) {
+						if (resource.toLowerCase().endsWith(".hhc")) {
+							return resource;
+						}
+					}
+				}
+				return name;
+			}
+		});
 	}
 
 	private final AtomicReference<Object> contentsSiteMapCache = new AtomicReference<Object>();
@@ -505,8 +519,22 @@ public class CHMFile implements Closeable {
 	}
 
 	// *.hhk
-	public String getIndexFileName() {
-		return sharpSystem.getProperty(SharpSystem.HhpOption.IndexFile);
+	private final AtomicReference<Object> indexFileNameCache = new AtomicReference<Object>();
+	public String getIndexFileName() throws IOException {
+		return Utils.lazyGet(indexFileNameCache, new Utils.SupplierWithException<String, IOException>() {
+			@Override
+			public String get() throws IOException {
+				String name = sharpSystem.getProperty(SharpSystem.HhpOption.IndexFile);
+				if (name == null) {
+					for(String resource : getResources()) {
+						if (resource.toLowerCase().endsWith(".hhk")) {
+							return resource;
+						}
+					}
+				}
+				return name;
+			}
+		});
 	}
 
 	private final AtomicReference<Object> indexSiteMapCache = new AtomicReference<Object>();
