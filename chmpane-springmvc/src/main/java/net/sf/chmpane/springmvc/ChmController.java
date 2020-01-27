@@ -94,7 +94,7 @@ public class ChmController {
                 "<frameset cols='20%,*'>\n" +
                 "    <frame name='sitemap' src='sitemap.html' />\n") +
                 "    <frame name='content' " +
-                ((defaultTopic == null) ? "" : ("src='" + defaultTopic + "'")) +
+                ((defaultTopic == null) ? "" : ("src='resources/" + defaultTopic + "'")) +
                 "/>\n" +
                 "</frameset>\n" +
                 "</html>";
@@ -114,7 +114,7 @@ public class ChmController {
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'></head><body><ul>\n");
         for (String filename : chm.getResources()) {
-            sb.append("<li><a href='." + filename + "'>" + filename + "</a></li>\n");
+            sb.append("<li><a href='resources" + filename + "'>" + filename + "</a></li>\n");
         }
         sb.append("</ul></body></html>");
         return sb.toString();
@@ -173,7 +173,7 @@ public class ChmController {
     private void siteMapItemToHtml(SiteMap.Item item, StringBuilder sb) {
         if (item.getName() != null) {
             if (item.getLocal() != null) {
-                sb.append("<li><a target='content' href='").append(item.getLocal()).append("'>").append(item.getName()).append("</a>\n");
+                sb.append("<li><a target='content' href='resources/").append(item.getLocal()).append("'>").append(item.getName()).append("</a>\n");
             } else {
                 sb.append("<li>").append(item.getName()).append("\n");
             }
@@ -210,7 +210,7 @@ public class ChmController {
         return chm.getLangs();
     }
 
-    @RequestMapping("/{path}/**")
+    @RequestMapping("/{path}/resources/**")
     public void file(@PathVariable("path") String path, HttpServletRequest request,
                      HttpServletResponse response) throws IOException {
         CHMFile chm = getChm(path);
