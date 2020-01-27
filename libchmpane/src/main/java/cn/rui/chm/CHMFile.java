@@ -38,6 +38,8 @@
 package cn.rui.chm;
 
 import lombok.Getter;
+import lombok.NonNull;
+import lombok.experimental.UtilityClass;
 import lombok.extern.java.Log;
 
 import java.io.*;
@@ -57,7 +59,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @see <a href="http://www.cabextract.org.uk/libmspack/doc/structmschmd__header.html">mschmd_header Struct Reference</a>
  */
 @Log
-public class CHMFile implements Closeable {
+public final class CHMFile implements Closeable {
 
 	public static final int CHM_HEADER_LENGTH = 0x60;
 
@@ -70,8 +72,14 @@ public class CHMFile implements Closeable {
 	 * It is not useful as a timestamp, but it is useful as a semi-unique ID.
 	 */
 	private int timestamp;
-	private int lang; // Windows Language ID
-	private int lang2;
+	/**
+	 * ITSF Header 0x14 DWORD : LCID of OS building the file, useless
+	 */
+	private int lcidITSF;
+	/**
+	 * ITSP Header 0x30 DWORD : LCID of ITSS.DLL, useless
+	 */
+	private int lcidITSP;
 	private long contentOffset;
 	private long fileLength;
 	private int chunkSize;
@@ -90,7 +98,7 @@ public class CHMFile implements Closeable {
 	private DirectoryChunk[] directoryChunks;
 	private DirectoryChunk rootIndexChunk;
 
-	private final Map<String, ListingEntry> entryCache;
+	private final Map<String, ResourceEntry> entryCache;
 
 	private final AtomicReference<Object> resourcesCache = new AtomicReference<Object>();
 	public List<String> getResources() throws IOException {
@@ -141,13 +149,13 @@ public class CHMFile implements Closeable {
 		return chunk;
 	}
 
-	public ListingEntry searchChunk(DirectoryChunk chunk, String name) throws IOException {
+	public ResourceEntry searchChunk(DirectoryChunk chunk, String name) throws IOException {
 		fillChunk(chunk);
 		if (chunk.content instanceof ListingChunk) {
-			List<ListingEntry> children = ((ListingChunk) chunk.content).children;
-			int idx = Collections.<ListingEntry>binarySearch(children, new ListingEntry(name),
-					new Comparator<ListingEntry>() {
-						public int compare(ListingEntry o1, ListingEntry o2) {
+			List<ResourceEntry> children = ((ListingChunk) chunk.content).children;
+			int idx = Collections.<ResourceEntry>binarySearch(children, new ResourceEntry(name),
+					new Comparator<ResourceEntry>() {
+						public int compare(ResourceEntry o1, ResourceEntry o2) {
 							return String.CASE_INSENSITIVE_ORDER.compare(o1.name, o2.name);
 						}
 					}
@@ -221,14 +229,14 @@ public class CHMFile implements Closeable {
 				chunkCompleted(chunk);
 				return chunk;
 			} else if (DirectoryChunkType.ListingChunk.magic.equals(chunkMagic)) {
-				ArrayList<ListingEntry> entries = new ArrayList<ListingEntry>();
+				ArrayList<ResourceEntry> entries = new ArrayList<ResourceEntry>();
 				int freeSpace = in.read32(); // Length of free space and/or quickref area at end of directory chunk
 				in.read32(); // = 0;
 				in.read32(); // previousChunk #
 				in.read32(); // nextChunk #
 				synchronized (entryCache) {
 					while (in.available() > freeSpace) {
-						ListingEntry entry = new ListingEntry(in);
+						ResourceEntry entry = new ResourceEntry(in);
 						entries.add(entry);
 						entryCache.put(entry.name, entry);
 					}
@@ -254,17 +262,29 @@ public class CHMFile implements Closeable {
 		}
 	}
 
+	@UtilityClass
+	public class ResourceNames {
+		public final String NameList = "::DataSpace/NameList";
+		public final String SharpSystem = cn.rui.chm.SharpSystem.Filename;
+		public final String SharpFIftiMain = "/$FIftiMain";
+	}
+
 	/**
 	 * Resovle entry by name, using cache and index
+	 * @param name not null
+	 * @return null if there is no entry called 'name'
+	 * @throws IOException
 	 */
-	private ListingEntry resolveEntry(String name) throws IOException {
-		ListingEntry entry = entryCache.get(name);
+	private ResourceEntry resolveEntry(@NonNull String name) throws IOException {
+		ResourceEntry entry = entryCache.get(name);
 		if (entry == null && !isResourcesCompleted()) {
 			entry = searchChunk(rootIndexChunk, name);
 		}
+		/*
 		if (entry == null) {
 			throw new FileNotFoundException(file + ": " + name);
 		}
+		*/
 		return entry;
 	}
 
@@ -299,8 +319,8 @@ public class CHMFile implements Closeable {
 		public DirectoryChunkType getType() {
 			return DirectoryChunkType.ListingChunk;
 		}
-		final List<ListingEntry> children;
-		ListingChunk(List<ListingEntry> children) {
+		final List<ResourceEntry> children;
+		ListingChunk(List<ResourceEntry> children) {
 			this.children = children;
 		}
 	}
@@ -316,7 +336,7 @@ public class CHMFile implements Closeable {
 		}
 	}
 
-	private Section[] sections = new Section[]{ new Section() }; // for section 0
+	private final Section[] sections;
 
 	private File file;
 
@@ -326,14 +346,15 @@ public class CHMFile implements Closeable {
 	/**
 	 * We need random access to the source file
 	 */
-	public CHMFile(File file) throws IOException, DataFormatException {
-		fileAccess = new RandomAccessFile(this.file = file, "r");
+	public CHMFile(@NonNull File file) throws IOException, DataFormatException {
+		this.file = file;
+		fileAccess = new RandomAccessFile(file, "r");
 
 		/** Step 1. CHM header  */
 		// The header length is 0x60 (96)
 		LEInputStream inHeader = new LEInputStream(createInputStream(0, CHM_HEADER_LENGTH));
 		if (!inHeader.readUTF8(4).equals("ITSF")) {
-			throw new DataFormatException("CHM file should start with \"ITSF\"");
+			throw new DataFormatException("CHM file should start with 'ITSF'");
 		}
 
 		if ((version = inHeader.read32()) > 3) {
@@ -344,9 +365,9 @@ public class CHMFile implements Closeable {
 		inHeader.read32(); // -1
 
 		timestamp = inHeader.read32();
-		log.info("CHM timestamp " + String.format("%04X", timestamp));
-		lang = inHeader.read32();
-		log.info("CHM ITSF language " + WindowsLanguageID.getLocale(lang));
+		//log.info("CHM timestamp " + String.format("%04X", timestamp));
+		lcidITSF = inHeader.read32();
+		//log.info(String.format("CHM ITSF lcid: 0x%04X , locale: %1s", lcidITSF, WindowsLanguageID.getLocale(lcidITSF)));
 
 		String guid1 = inHeader.readGUID(); // "7C01FD10-7BAA-11D0-9E0C-00A0-C922-E6EC"
 		//log.info("guid1 = " + guid1);
@@ -392,8 +413,8 @@ public class CHMFile implements Closeable {
 		lastPMGLChunkNo = inDirectory.read32();
 		inDirectory.read32(); // = -1
 		totalChunks = inDirectory.read32();
-		lang2 = inDirectory.read32(); // language code
-		log.info("CHM ITSP language " + WindowsLanguageID.getLocale(lang2));
+		lcidITSP = inDirectory.read32();
+		//log.info(String.format("CHM ITSP lcid: 0x%04X , locale: %1s", lcidITSP, WindowsLanguageID.getLocale(lcidITSP)));
 
 		inDirectory.readGUID(); //.equals("5D02926A-212E-11D0-9DF9-00A0-C922-E6EC"))
 		inDirectory.read32(); // = x54
@@ -406,7 +427,7 @@ public class CHMFile implements Closeable {
 		}
 
 		// init chunk cache
-		entryCache = new ConcurrentSkipListMap<String, ListingEntry>(String.CASE_INSENSITIVE_ORDER);
+		entryCache = new ConcurrentSkipListMap<String, ResourceEntry>(String.CASE_INSENSITIVE_ORDER);
 		completedChunks = new AtomicInteger(0);
 		directoryChunks = new DirectoryChunk[totalChunks];
 		rootIndexChunk = new DirectoryChunk(rootIndexChunkNo, null);
@@ -417,14 +438,16 @@ public class CHMFile implements Closeable {
 		}
 
 		/* Step 2. CHM name list: content sections */
-		LEInputStream inNameList = new LEInputStream(getResourceAsStream("::DataSpace/NameList"));
-		if (inNameList == null) {
-			throw new DataFormatException("Missing ::DataSpace/NameList entry");
+		ResourceEntry entryNameList = resolveEntry(ResourceNames.NameList);
+		if (entryNameList == null) {
+			throw new DataFormatException("Missing " + ResourceNames.NameList + " entry");
 		}
-		inNameList.read16(); // length in 16-bit-word, = in.length() / 2
-		sections = new Section[inNameList.read16()];
+		Section section0 = new Section(); // section for ::DataSpace/NameList must be uncompressed and sections[0].
+		LEInputStream leinNameList = new LEInputStream(section0.resolveInputStream(entryNameList.offset, entryNameList.length));
+		leinNameList.read16(); // length in 16-bit-word, = in.length() / 2
+		sections = new Section[leinNameList.read16()];
 		for (int i = 0; i < sections.length; i ++) {
-			String name = inNameList.readUTF16(inNameList.read16() << 1);
+			String name = leinNameList.readUTF16(leinNameList.read16() << 1);
 			if ("Uncompressed".equals(name)) {
 				sections[i] = new Section();
 			} else if ("MSCompressed".equals(name)) {
@@ -432,12 +455,12 @@ public class CHMFile implements Closeable {
 			} else {
 				throw new DataFormatException("Unknown content section " + name);
 			}
-			inNameList.read16(); // = null
+			leinNameList.read16(); // = null
 		}
 
-		InputStream inSharpSystem = getResourceAsStream(SharpSystem.FILENAME);
+		InputStream inSharpSystem = getResourceAsStreamInner(ResourceNames.SharpSystem);
 		if (inSharpSystem == null) {
-			throw new DataFormatException("Missing " + SharpSystem.FILENAME + " entry");
+			throw new DataFormatException("Missing " + ResourceNames.SharpSystem + " entry");
 		}
 		sharpSystem = new SharpSystem(inSharpSystem);
 	}
@@ -457,12 +480,23 @@ public class CHMFile implements Closeable {
 
 	/**
 	 * Get an InputStream object for the named resource in the CHM.
+	 * @param name not null
+	 * @return cannot be null
+	 * @throws IOException, FileNotFoundException if cannot find the entry
 	 */
-	public InputStream getResourceAsStream(String name) throws IOException {
-		if (name == null) {
-			throw new NullPointerException("name");
+	public @NonNull InputStream getResourceAsStream(@NonNull String name) throws IOException {
+		InputStream is = getResourceAsStreamInner(name);
+		if (is == null) {
+			throw new FileNotFoundException(file.getName() + name);
 		}
-		ListingEntry entry = resolveEntry(name);
+		return is;
+	}
+
+	private InputStream getResourceAsStreamInner(@NonNull String name) throws IOException {
+		ResourceEntry entry = resolveEntry(name);
+		if (entry == null) {
+			return null;
+		}
 		Section section = sections[entry.section];
 		return section.resolveInputStream(entry.offset, entry.length);
 	}
@@ -551,8 +585,6 @@ public class CHMFile implements Closeable {
 	 * After close, the object can not be used any more.
 	 */
 	public synchronized void close() throws IOException {
-		sections = null;
-
 		RandomAccessFile fileAccess = this.fileAccess;
 		if (fileAccess != null) {
 			this.fileAccess = null;
@@ -618,11 +650,15 @@ public class CHMFile implements Closeable {
 //			cachedBlocks = new byte[resetInterval][blockSize];
 //			cachedResetBlockNo = -1;
 
-			ListingEntry entry = resolveEntry("::DataSpace/Storage/MSCompressed/Content");
-			if ( entry == null )
-				throw new DataFormatException("LZXC missing content");
-			if (compressedLength != entry.length)
-				throw new DataFormatException("LZXC content corrupted");
+			ResourceEntry entry = resolveEntry("::DataSpace/Storage/MSCompressed/Content");
+			if (entry == null)
+				throw new DataFormatException("LZXC content missing");
+			if (compressedLength != entry.length) {
+				if (compressedLength > entry.length) {
+					throw new DataFormatException("LZXC content corrupted");
+				}
+				log.warning(MessageFormat.format("LZXC content compressedLength={0} , but entry.length={1}", compressedLength, entry.length));
+			}
 			sectionOffset = contentOffset + entry.offset;
 		}
 
@@ -729,20 +765,20 @@ public class CHMFile implements Closeable {
 		}
 	}
 
-	static class ListingEntry {
+	static class ResourceEntry {
 		String name;
 		int section;
 		long offset;
 		int length;
 
-		public ListingEntry(LEInputStream in) throws IOException {
+		public ResourceEntry(LEInputStream in) throws IOException {
 			name = in.readUTF8(in.readENC());
 			section = in.readENC();
 			offset = in.readENC();
 			length = in.readENC();
 		}
 
-		ListingEntry(String name) {
+		ResourceEntry(String name) {
 			this.name = name;
 		}
 
@@ -751,35 +787,38 @@ public class CHMFile implements Closeable {
 		}
 	}
 
+	private static void putLcid(Map<String, Object> values, int lcid, String name) {
+		values.put(name, lcid);
+		Locale locale = WindowsLanguageID.getLocale(lcid);
+		values.put("Locale from " + name, locale);
+		log.info(String.format(name + ": 0x%04X , locale: %1s", lcid, locale));
+	}
+
+	private static void putCodePage(Map<String, Object> values, int codePage, String name) {
+		values.put(name, codePage);
+		Charset charset = WindowsLanguageID.getCharsetByCodePage(codePage);
+		values.put("Charset from " + name, charset);
+		log.info(String.format(name + ": %0$d , charset: %1s", codePage, charset));
+	}
+
 	public Map<String, Object> getLangs() {
 		Map<String, Object> values = new HashMap<String, Object>();
 		try {
-			values.put("lang", lang);
-			values.put("lang_locale", WindowsLanguageID.getLocale(lang));
-			log.info(String.format("lang1 0x%04X %1s", lang, WindowsLanguageID.getLocale(lang)));
+			putLcid(values, lcidITSF, "LCID of building OS, in ITSF Header");
+			putLcid(values, lcidITSP, "LCID of Itss.Dll, in ITSP Header");
+			putLcid(values, sharpSystem.getLcid(), "LCID in " + ResourceNames.SharpSystem);
 
-			values.put("lang2", lang2);
-			values.put("lang2_locale", WindowsLanguageID.getLocale(lang2));
-			log.info(String.format("lang2 0x%04X %1s", lang2, WindowsLanguageID.getLocale(lang2)));
-
-			int lang3 = sharpSystem.getLcid();
-			values.put("lang3", lang3);
-			values.put("lang3_locale", WindowsLanguageID.getLocale(lang3));
-			log.info(String.format("lang3 0x%04X %1s", lang3, WindowsLanguageID.getLocale(lang3)));
-
-			byte[] buf = new byte[256];
-			LEInputStream in = new LEInputStream(getResourceAsStream("/$FIftiMain"));
-			if (in.read(buf, 0, 0x7a) < 0x7a) {
-				throw new IOException("Unexpected end of file " + "/$FIftiMain");
+			InputStream inFIftiMain = getResourceAsStreamInner(ResourceNames.SharpFIftiMain);
+			if (inFIftiMain != null) {
+				LEInputStream in = new LEInputStream(inFIftiMain);
+				if (in.read(new byte[256], 0, 0x7a) < 0x7a) {
+					throw new IOException("Unexpected end of file " + ResourceNames.SharpFIftiMain);
+				}
+				int codePageSharpFIftiMain = in.read32();
+				putCodePage(values, codePageSharpFIftiMain, "CodePage in " + ResourceNames.SharpFIftiMain);
+				int lcidSharpFIftiMain = in.read32();
+				putLcid(values, lcidSharpFIftiMain, "LCID in " + ResourceNames.SharpFIftiMain);
 			}
-			int codepage4 = in.read32();
-			values.put("codepage4", codepage4);
-			log.info(String.format("codepage4 %05d", codepage4));
-			int lang4 = in.read32();
-			values.put("lang4", lang4);
-			values.put("lang4_locale", WindowsLanguageID.getLocale(lang4));
-			log.info(String.format("lang4 0x%04X %1s", lang4, WindowsLanguageID.getLocale(lang4)));
-
 		} catch(Exception ex) {
 			log.throwing("CHMFile", "getLangs", ex);
 		}

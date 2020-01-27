@@ -16,7 +16,7 @@ import java.util.*;
 @ToString
 @Getter
 public class SharpSystem {
-    public static final String FILENAME = "/#SYSTEM";
+    public static final String Filename = "/#SYSTEM";
 
     public SharpSystem(InputStream inSharpSystem) throws IOException {
         LEInputStream in = new LEInputStream(inSharpSystem);
@@ -35,7 +35,7 @@ public class SharpSystem {
         }
         if (!lcidRead) {
             // TODO: should I set a default value to lcid ?
-            throw new DataFormatException("Cannot read lcid in file " + FILENAME);
+            throw new DataFormatException("Cannot read lcid in file " + Filename);
         }
         this.lcid = lcid;
         this.charset = WindowsLanguageID.getDefaultCharset(lcid);
@@ -54,6 +54,9 @@ public class SharpSystem {
     }
 
     private final int version;
+    /**
+     * /#SYSTEM entry.code=4 0x00 DWORD : LCID from the HHP file
+     */
     private final int lcid;
     private final Charset charset;
     private final List<Entry> entries;
@@ -71,7 +74,7 @@ public class SharpSystem {
             int dataLen = in.read16();
             byte[] data = new byte[dataLen];
             if (in.read(data) < data.length) {
-                throw new IOException("Unexpected end of entry[code=" + code + "] in file " + FILENAME);
+                throw new IOException("Unexpected end of entry[code=" + code + "] in file " + Filename);
             }
             return new Entry(code, data);
         }
