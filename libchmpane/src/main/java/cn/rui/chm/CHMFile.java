@@ -436,34 +436,30 @@ public final class CHMFile implements Closeable {
 		}
 
 		/* Step 2. CHM name list: content sections */
-		ResourceEntry entryNameList = resolveEntry(ResourceNames.NameList);
-		if (entryNameList == null) {
-			throw new DataFormatException("Missing " + ResourceNames.NameList + " entry");
-		}
-		Section section0 = new Section(); // section for ::DataSpace/NameList must be uncompressed and sections[0]
-		LEInputStream leinNameList = new LEInputStream(section0.resolveInputStream(entryNameList.offset, entryNameList.length));
+		LEInputStream leinNameList = new LEInputStream(getUncompressedResourceAsStream(ResourceNames.NameList, null));
 		leinNameList.read16(); // length in 16-bit-word, = in.length() / 2
 		sections = new Section[leinNameList.read16()];
+		LZXCConfig lzxcConfig = null;
 		for (int i = 0; i < sections.length; i ++) {
 			String name = leinNameList.readUTF16(leinNameList.read16() << 1);
 			if ("Uncompressed".equals(name)) {
 				sections[i] = new Section();
 			} else if ("MSCompressed".equals(name)) {
-				sections[i] = null;
+				if (lzxcConfig == null) {
+					lzxcConfig = new LZXCConfig(); // use Uncompressed sections, should be sections[0]
+				}
+				sections[i] = lzxcConfig.createLZXCSection();
 			} else {
 				throw new DataFormatException("Unknown content section " + name);
 			}
 			leinNameList.read16(); // = null
 		}
-		LZXCConfig lzxcConfig = new LZXCConfig(); // use Uncompressed sections, should be sections[0]
-		for (int i = 0; i < sections.length; i ++) {
-			if (sections[i] == null) {
-				sections[i] = lzxcConfig.createLZXCSection();
-			}
-		}
 
-		InputStream inSharpSystem = getInternalResourceAsStream(ResourceNames.SharpSystem, "Missing " + ResourceNames.SharpSystem + " entry");
-		sharpSystem = new SharpSystem(inSharpSystem);
+		ResourceEntry entrySharpSystem = resolveEntry(ResourceNames.SharpSystem);
+		if (entrySharpSystem == null) {
+			throw new DataFormatException("Missing " + ResourceNames.SharpSystem + " entry");
+		}
+		sharpSystem = new SharpSystem(getStreamFromEntry(entrySharpSystem));
 	}
 
 	/**
@@ -479,6 +475,11 @@ public final class CHMFile implements Closeable {
 		}
 	}
 
+	private InputStream getStreamFromEntry(@NonNull ResourceEntry entry) throws IOException {
+		Section section = sections[entry.section];
+		return section.resolveInputStream(entry.offset, entry.length);
+	}
+
 	/**
 	 * Get an InputStream object for the named resource in the CHM.
 	 * @param name not null
@@ -486,28 +487,20 @@ public final class CHMFile implements Closeable {
 	 * @throws IOException, FileNotFoundException if cannot find the entry
 	 */
 	public @NonNull InputStream getResourceAsStream(@NonNull String name) throws IOException {
-		InputStream is = getResourceAsStreamInner(name);
-		if (is == null) {
-			throw new FileNotFoundException(file.getName() + name);
-		}
-		return is;
-	}
-
-	private @NonNull InputStream getInternalResourceAsStream(@NonNull String name, String exceptionMessage) throws IOException {
-		InputStream is = getResourceAsStreamInner(name);
-		if (is == null) {
-			throw new DataFormatException(exceptionMessage);
-		}
-		return is;
-	}
-
-	private InputStream getResourceAsStreamInner(@NonNull String name) throws IOException {
 		ResourceEntry entry = resolveEntry(name);
 		if (entry == null) {
-			return null;
+			throw new FileNotFoundException(file.getName() + name);
 		}
-		Section section = sections[entry.section];
-		return section.resolveInputStream(entry.offset, entry.length);
+		return getStreamFromEntry(entry);
+	}
+
+	// never use sections , cause it has not been initialized.
+	private InputStream getUncompressedResourceAsStream(@NonNull String name, String simpleName) throws IOException {
+		ResourceEntry entry = resolveEntry(name);
+		if (entry == null) {
+			throw new DataFormatException("Missing " + (simpleName != null ? simpleName : name) + " entry");
+		}
+		return createInputStream(contentOffset + entry.offset, entry.length);
 	}
 
 	@Getter
@@ -621,8 +614,8 @@ public final class CHMFile implements Closeable {
 		final int cacheSize;
 		public LZXCConfig() throws IOException, DataFormatException {
 			// control data
-			LEInputStream in = new LEInputStream(getInternalResourceAsStream(
-					"::DataSpace/Storage/MSCompressed/ControlData", "LZXC missing control data"));
+			LEInputStream in = new LEInputStream(getUncompressedResourceAsStream(
+					"::DataSpace/Storage/MSCompressed/ControlData", "LZXC control data"));
 			in.read32(); // words following LZXC
 			if ( ! in.readUTF8(4).equals("LZXC")) {
 				throw new DataFormatException("Must be in LZX Compression");
@@ -636,9 +629,9 @@ public final class CHMFile implements Closeable {
 			in.read32(); // = 0
 
 			// reset table
-			in = new LEInputStream(getInternalResourceAsStream(
+			in = new LEInputStream(getUncompressedResourceAsStream(
 					"::DataSpace/Storage/MSCompressed/Transform/{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable",
-					"LZXC missing reset table"));
+					"LZXC reset table"));
 			int version = in.read32();
 			if ( version != 2) log.warning("LZXC version unknown " + version);
 			addressTable = new long[in.read32()];
@@ -823,9 +816,9 @@ public final class CHMFile implements Closeable {
 			putLcid(values, lcidITSP, "LCID of Itss.Dll, in ITSP Header");
 			putLcid(values, sharpSystem.getLcid(), "LCID in " + ResourceNames.SharpSystem);
 
-			InputStream inFIftiMain = getResourceAsStreamInner(ResourceNames.SharpFIftiMain);
-			if (inFIftiMain != null) {
-				LEInputStream in = new LEInputStream(inFIftiMain);
+			ResourceEntry entryFIftiMain = resolveEntry(ResourceNames.SharpFIftiMain);
+			if (entryFIftiMain != null) {
+				LEInputStream in = new LEInputStream(getStreamFromEntry(entryFIftiMain));
 				if (in.read(new byte[256], 0, 0x7a) < 0x7a) {
 					throw new IOException("Unexpected end of file " + ResourceNames.SharpFIftiMain);
 				}
