@@ -73,7 +73,7 @@ public class SharpSystem {
             int code = in.read16();
             int dataLen = in.read16();
             byte[] data = new byte[dataLen];
-            if (in.read(data) < data.length) {
+            if (dataLen > 0 && in.read(data) < data.length) {
                 throw new IOException("Unexpected end of entry[code=" + code + "] in file " + Filename);
             }
             return new Entry(code, data);
