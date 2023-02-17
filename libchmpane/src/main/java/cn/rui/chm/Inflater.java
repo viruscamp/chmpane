@@ -234,13 +234,15 @@ class Inflater {
 				block_remaining -= this_run;
 				
 				window_posn %= window.length;
-				if (window_posn + this_run > window.length)
+				if (window_posn + this_run > window.length) {
 					log.warning("runs can't straddle the window wraparound");
 					//throw new DataFormatException("runs can't straddle the window wraparound");
+				}
 				
 				if (block_type == LZX_BLOCKTYPE_UNCOMPRESSED) {
-					if (this_run > bin.available()) // make sure we can read
+					if (this_run > bin.available()) { // make sure we can read
 						throw new DataFormatException("not enough data");
+					}
 					bin.readFully(window, window_posn, this_run);
 					window_posn += this_run;				
 				} else { // block_type == LZX_BLOCKTYPE_VERBATIM, LZX_BLOCKTYPE_ALIGNED

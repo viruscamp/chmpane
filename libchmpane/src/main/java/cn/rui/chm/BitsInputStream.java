@@ -80,7 +80,7 @@ class BitsInputStream extends FilterInputStream {
 	}
 	
 	/**
-	 * Make sure there are at least n (<=16) bits in the buffer,
+	 * Make sure there are at least n (<=32) bits in the buffer,
 	 * otherwise, read a 16-bit little-endian word from the byte array.
 	 * returns bitsLeft;
 	 */
@@ -94,7 +94,7 @@ class BitsInputStream extends FilterInputStream {
 			
 			bitbuf |= ( b1 | ( b2 << 8) ) << (BUFFER_BITS - 16 - bitsLeft);
 			bitsLeft += 16;
-		}		
+		}
 		return bitsLeft;
 	}
 	

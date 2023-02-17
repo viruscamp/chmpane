@@ -66,40 +66,43 @@ public final class CHMFile implements Closeable {
 	public static final int CHM_DIRECTORY_HEADER_LENGTH = 0x54;
 
 	// header info
-	private int version; // 3, 2
+	private final int version; // 3, 2
 	/**
 	 * It is the lower 32 bits of a 64-bit value representing the number of centiseconds since 1601-01-01 00:00:00 UTC, plus 42.
 	 * It is not useful as a timestamp, but it is useful as a semi-unique ID.
 	 */
-	private int timestamp;
+	private final int timestamp;
 	/**
 	 * ITSF Header 0x14 DWORD : LCID of OS building the file, useless
 	 */
-	private int lcidITSF;
+	private final int lcidITSF;
 	/**
 	 * ITSP Header 0x30 DWORD : LCID of ITSS.DLL, useless
 	 */
-	private int lcidITSP;
-	private long contentOffset;
-	private long fileLength;
-	private int chunkSize;
-	private int quickRef;
-	private int depthOfIndexTree;
-	private int rootIndexChunkNo;
-	private int firstPMGLChunkNo;
-	private int lastPMGLChunkNo;
+	private final int lcidITSP;
+	private final long contentOffset;
+	private final long fileLength;
+	private final int chunkSize;
+	private final int quickRef;
+	private final int depthOfIndexTree;
+	private final int rootIndexChunkNo;
+	private final int firstPMGLChunkNo;
+	private final int lastPMGLChunkNo;
 	private final int totalChunks;
 
-	private long chunkOffset;
+	private final long chunkOffset;
 
-	RandomAccessFile fileAccess;
+	private final RandomAccessFile fileAccess;
 
-	private AtomicInteger completedChunks;
+	// should be cleared when entryCache is fully filled
+	private final AtomicInteger completedChunks;
 	private DirectoryChunk[] directoryChunks;
 	private DirectoryChunk rootIndexChunk;
 
+	// will be filled stepwise
 	private final Map<String, ResourceEntry> entryCache;
 
+	// should have value when entryCache is fully filled
 	private final AtomicReference<Object> resourcesCache = new AtomicReference<Object>();
 	public List<String> getResources() throws IOException {
 		return Utils.lazyGet(this.resourcesCache, new Utils.SupplierWithException<List<String>, IOException>() {
@@ -123,8 +126,8 @@ public final class CHMFile implements Closeable {
 						list.add(name);
 					}
 				}
-				//directoryChunks = null;
-				//rootIndexChunk = null;
+				directoryChunks = null;
+				rootIndexChunk = null;
 				return Collections.unmodifiableList(list);
 			}
 		});
@@ -280,11 +283,6 @@ public final class CHMFile implements Closeable {
 		if (entry == null && !isResourcesCompleted()) {
 			entry = searchChunk(rootIndexChunk, name);
 		}
-		/*
-		if (entry == null) {
-			throw new FileNotFoundException(file + ": " + name);
-		}
-		*/
 		return entry;
 	}
 
@@ -438,31 +436,30 @@ public final class CHMFile implements Closeable {
 		}
 
 		/* Step 2. CHM name list: content sections */
-		ResourceEntry entryNameList = resolveEntry(ResourceNames.NameList);
-		if (entryNameList == null) {
-			throw new DataFormatException("Missing " + ResourceNames.NameList + " entry");
-		}
-		Section section0 = new Section(); // section for ::DataSpace/NameList must be uncompressed and sections[0].
-		LEInputStream leinNameList = new LEInputStream(section0.resolveInputStream(entryNameList.offset, entryNameList.length));
+		LEInputStream leinNameList = new LEInputStream(getUncompressedResourceAsStream(ResourceNames.NameList, null));
 		leinNameList.read16(); // length in 16-bit-word, = in.length() / 2
 		sections = new Section[leinNameList.read16()];
+		LZXCConfig lzxcConfig = null;
 		for (int i = 0; i < sections.length; i ++) {
 			String name = leinNameList.readUTF16(leinNameList.read16() << 1);
 			if ("Uncompressed".equals(name)) {
 				sections[i] = new Section();
 			} else if ("MSCompressed".equals(name)) {
-				sections[i] = new LZXCSection();
+				if (lzxcConfig == null) {
+					lzxcConfig = new LZXCConfig(); // use Uncompressed sections, should be sections[0]
+				}
+				sections[i] = lzxcConfig.createLZXCSection();
 			} else {
 				throw new DataFormatException("Unknown content section " + name);
 			}
 			leinNameList.read16(); // = null
 		}
 
-		InputStream inSharpSystem = getResourceAsStreamInner(ResourceNames.SharpSystem);
-		if (inSharpSystem == null) {
+		ResourceEntry entrySharpSystem = resolveEntry(ResourceNames.SharpSystem);
+		if (entrySharpSystem == null) {
 			throw new DataFormatException("Missing " + ResourceNames.SharpSystem + " entry");
 		}
-		sharpSystem = new SharpSystem(inSharpSystem);
+		sharpSystem = new SharpSystem(getStreamFromEntry(entrySharpSystem));
 	}
 
 	/**
@@ -478,6 +475,11 @@ public final class CHMFile implements Closeable {
 		}
 	}
 
+	private InputStream getStreamFromEntry(@NonNull ResourceEntry entry) throws IOException {
+		Section section = sections[entry.section];
+		return section.resolveInputStream(entry.offset, entry.length);
+	}
+
 	/**
 	 * Get an InputStream object for the named resource in the CHM.
 	 * @param name not null
@@ -485,20 +487,20 @@ public final class CHMFile implements Closeable {
 	 * @throws IOException, FileNotFoundException if cannot find the entry
 	 */
 	public @NonNull InputStream getResourceAsStream(@NonNull String name) throws IOException {
-		InputStream is = getResourceAsStreamInner(name);
-		if (is == null) {
-			throw new FileNotFoundException(file.getName() + name);
-		}
-		return is;
-	}
-
-	private InputStream getResourceAsStreamInner(@NonNull String name) throws IOException {
 		ResourceEntry entry = resolveEntry(name);
 		if (entry == null) {
-			return null;
+			throw new FileNotFoundException(file.getName() + name);
 		}
-		Section section = sections[entry.section];
-		return section.resolveInputStream(entry.offset, entry.length);
+		return getStreamFromEntry(entry);
+	}
+
+	// never use sections , cause it has not been initialized.
+	private InputStream getUncompressedResourceAsStream(@NonNull String name, String simpleName) throws IOException {
+		ResourceEntry entry = resolveEntry(name);
+		if (entry == null) {
+			throw new DataFormatException("Missing " + (simpleName != null ? simpleName : name) + " entry");
+		}
+		return createInputStream(contentOffset + entry.offset, entry.length);
 	}
 
 	@Getter
@@ -591,7 +593,6 @@ public final class CHMFile implements Closeable {
 	public synchronized void close() throws IOException {
 		RandomAccessFile fileAccess = this.fileAccess;
 		if (fileAccess != null) {
-			this.fileAccess = null;
 			fileAccess.close();
 		}
 	}
@@ -606,39 +607,35 @@ public final class CHMFile implements Closeable {
 		}
 	}
 
-	class LZXCSection extends Section {
-
-		long compressedLength;
-		long uncompressedLength;
-		int blockSize;
-		int resetInterval;
-		long[]addressTable;
-		int windowSize;
-		long sectionOffset;
-
-		LRUCache<Integer, byte[][]> cachedBlocks;
-
-		public LZXCSection() throws IOException, DataFormatException {
+	class LZXCConfig {
+		final long compressedLength;
+		final long uncompressedLength;
+		final int blockSize;
+		final int resetInterval;
+		final long[]addressTable;
+		final int windowSize;
+		final long sectionOffset;
+		final int cacheSize;
+		public LZXCConfig() throws IOException, DataFormatException {
 			// control data
-			LEInputStream in = new LEInputStream(
-					getResourceAsStream("::DataSpace/Storage/MSCompressed/ControlData"));
+			LEInputStream in = new LEInputStream(getUncompressedResourceAsStream(
+					"::DataSpace/Storage/MSCompressed/ControlData", "LZXC control data"));
 			in.read32(); // words following LZXC
-			if ( ! in.readUTF8(4).equals("LZXC"))
+			if ( ! in.readUTF8(4).equals("LZXC")) {
 				throw new DataFormatException("Must be in LZX Compression");
+			}
 
 			in.read32(); // <=2, version
 			resetInterval = in.read32(); // huffman reset interval for blocks
 			windowSize = in.read32() * 0x8000;	// usu. 0x10, windows size in 0x8000-byte blocks
-			int cacheSize = in.read32();	// unknown, 0, 1, 2
+			cacheSize = in.read32();	// unknown, 0, 1, 2
 			log.info("LZX cache size " + cacheSize);
-			cachedBlocks = new LRUCache<Integer, byte[][]>((1 + cacheSize) << 2);
 			in.read32(); // = 0
 
 			// reset table
-			in = new LEInputStream(
-					getResourceAsStream("::DataSpace/Storage/MSCompressed/Transform/" +
-						"{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable"));
-			if (in == null) throw new DataFormatException("LZXC missing reset table");
+			in = new LEInputStream(getUncompressedResourceAsStream(
+					"::DataSpace/Storage/MSCompressed/Transform/{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable",
+					"LZXC reset table"));
 			int version = in.read32();
 			if ( version != 2) log.warning("LZXC version unknown " + version);
 			addressTable = new long[in.read32()];
@@ -655,8 +652,9 @@ public final class CHMFile implements Closeable {
 //			cachedResetBlockNo = -1;
 
 			ResourceEntry entry = resolveEntry("::DataSpace/Storage/MSCompressed/Content");
-			if (entry == null)
+			if (entry == null) {
 				throw new DataFormatException("LZXC content missing");
+			}
 			if (compressedLength != entry.length) {
 				if (compressedLength > entry.length) {
 					throw new DataFormatException("LZXC content corrupted");
@@ -666,106 +664,116 @@ public final class CHMFile implements Closeable {
 			sectionOffset = contentOffset + entry.offset;
 		}
 
-		@Override
-		public InputStream resolveInputStream(final long off, final int len) throws IOException {
-			// the input stream !
-			return new InputStream() {
+		public Section createLZXCSection() {
+			return new LZXCSection();
+		}
 
-				int startBlockNo = (int) (off / blockSize);
-				int startOffset = (int) (off % blockSize);
-				int endBlockNo = (int) ( (off + len) / blockSize );
-				int endOffset = (int) ( (off + len) % blockSize );
-				// actually start at reset intervals
-				int blockNo = startBlockNo - startBlockNo % resetInterval;
+		class LZXCSection extends Section {
+			final LRUCache<Integer, byte[][]> cachedBlocks;
+			LZXCSection() {
+				cachedBlocks = new LRUCache<Integer, byte[][]>((1 + cacheSize) << 2);
+			}
 
-				Inflater inflater = new Inflater(windowSize);
+			@Override
+			public InputStream resolveInputStream(final long off, final int len) throws IOException {
+				// the input stream !
+				return new InputStream() {
+					int startBlockNo = (int) (off / blockSize);
+					int startOffset = (int) (off % blockSize);
+					int endBlockNo = (int) ((off + len) / blockSize);
+					int endOffset = (int) ((off + len) % blockSize);
+					// actually start at reset intervals
+					int blockNo = startBlockNo - startBlockNo % resetInterval;
 
-				byte[]buf;
-				int pos;
-				int bytesLeft;
+					Inflater inflater = new Inflater(windowSize);
 
-				@Override
-				public int available() throws IOException {
-					return bytesLeft; // not non-blocking available
-				}
+					byte[] buf;
+					int pos;
+					int bytesLeft;
 
-				@Override
-				public void close() throws IOException {
-					inflater = null;
-				}
+					@Override
+					public int available() throws IOException {
+						return bytesLeft; // not non-blocking available
+					}
 
-				/**
-				 * Read the blockNo block, called when bytesLeft == 0
-				 */
-				private void readBlock() throws IOException {
-					if (blockNo > endBlockNo)
-						throw new EOFException();
+					@Override
+					public void close() throws IOException {
+						inflater = null;
+					}
 
-					int cachedNo = blockNo / resetInterval;
-					synchronized(cachedBlocks) {
-						byte[][]cache = cachedBlocks.get(cachedNo);
-						if (cache == null) {
-							if ( (cache = cachedBlocks.prune()) == null) // try reuse old caches
+					/**
+					 * Read the blockNo block, called when bytesLeft == 0
+					 */
+					private void readBlock() throws IOException {
+						if (blockNo > endBlockNo)
+							throw new EOFException();
+
+						int cachedNo = blockNo / resetInterval;
+						synchronized (cachedBlocks) {
+							byte[][] cache = cachedBlocks.get(cachedNo);
+							if (cache == null) {
+								if ((cache = cachedBlocks.prune()) == null) // try reuse old caches
 									cache = new byte[resetInterval][blockSize];
-							int resetBlockNo =  blockNo - blockNo % resetInterval;
-							for (int i = 0; i < cache.length && resetBlockNo + i < addressTable.length; i ++) {
-								int blockNo = resetBlockNo + i;
-								int len = (int) ( (blockNo + 1 < addressTable.length) ?
-										( addressTable[blockNo + 1] - addressTable[blockNo] ):
-											( compressedLength - addressTable[blockNo]) );
-								log.fine("readBlock " + blockNo + ": " + (sectionOffset + addressTable[blockNo]) + "+ " +  len);
-								inflater.inflate(i == 0, // reset flag
-										createInputStream(sectionOffset + addressTable[blockNo], len),
-										cache[i]); // here is the heart
+								int resetBlockNo = blockNo - blockNo % resetInterval;
+								for (int i = 0; i < cache.length && resetBlockNo + i < addressTable.length; i++) {
+									int blockNo = resetBlockNo + i;
+									int len = (int) ((blockNo + 1 < addressTable.length) ?
+											(addressTable[blockNo + 1] - addressTable[blockNo]) :
+											(compressedLength - addressTable[blockNo]));
+									log.fine("readBlock " + blockNo + ": " + (sectionOffset + addressTable[blockNo]) + "+ " + len);
+									inflater.inflate(i == 0, // reset flag
+											createInputStream(sectionOffset + addressTable[blockNo], len),
+											cache[i]); // here is the heart
+								}
+								cachedBlocks.put(cachedNo, cache);
 							}
-							cachedBlocks.put(cachedNo, cache);
+							if (buf == null) // allocate the buffer
+								buf = new byte[blockSize];
+							System.arraycopy(cache[blockNo % cache.length], 0, buf, 0, buf.length);
 						}
-						if (buf == null) // allocate the buffer
-							buf = new byte[blockSize];
-						System.arraycopy(cache[blockNo % cache.length], 0, buf, 0, buf.length);
+
+						// the start block has special pos value
+						pos = (blockNo == startBlockNo) ? startOffset : 0;
+						// the end block has special length
+						bytesLeft = (blockNo < startBlockNo) ? 0
+								: ((blockNo < endBlockNo) ? blockSize : endOffset);
+						bytesLeft -= pos;
+
+						blockNo++;
 					}
 
-					// the start block has special pos value
-					pos = (blockNo == startBlockNo) ? startOffset : 0;
-					// the end block has special length
-					bytesLeft = (blockNo < startBlockNo) ? 0
-							: ( (blockNo < endBlockNo) ? blockSize : endOffset );
-					bytesLeft -= pos;
+					@Override
+					public int read(byte[] b, int off, int len) throws IOException {
 
-					blockNo ++;
-				}
+						if ((bytesLeft <= 0) && (blockNo > endBlockNo)) {
+							return -1;    // no more data
+						}
 
-				@Override
-				public int read(byte[] b, int off, int len) throws IOException {
+						while (bytesLeft <= 0)
+							readBlock(); // re-charge
 
-					if ( (bytesLeft <= 0) && (blockNo > endBlockNo) ) {
-						return -1;	// no more data
+						int togo = Math.min(bytesLeft, len);
+						System.arraycopy(buf, pos, b, off, togo);
+						pos += togo;
+						bytesLeft -= togo;
+
+						return togo;
 					}
 
-					while (bytesLeft <= 0)
-						readBlock(); // re-charge
+					@Override
+					public int read() throws IOException {
+						byte[] b = new byte[1];
+						return (read(b) == 1) ? b[0] & 0xff : -1;
+					}
 
-					int togo = Math.min(bytesLeft, len);
-					System.arraycopy(buf, pos, b, off, togo);
-					pos += togo;
-					bytesLeft -= togo;
-
-					return togo;
-				}
-
-				@Override
-				public int read() throws IOException {
-					byte[]b = new byte[1];
-					return (read(b) == 1) ? b[0] & 0xff : -1;
-				}
-
-				@Override
-				public long skip(long n) throws IOException {
-					log.warning("LZX skip happens: " + pos + "+ " + n);
-					pos += n;	// TODO n chould be negative, so do boundary checks!
-					return n;
-				}
-			};
+					@Override
+					public long skip(long n) throws IOException {
+						log.warning("LZX skip happens: " + pos + "+ " + n);
+						pos += n;    // TODO n chould be negative, so do boundary checks!
+						return n;
+					}
+				};
+			}
 		}
 	}
 
@@ -812,9 +820,9 @@ public final class CHMFile implements Closeable {
 			putLcid(values, lcidITSP, "LCID of Itss.Dll, in ITSP Header");
 			putLcid(values, sharpSystem.getLcid(), "LCID in " + ResourceNames.SharpSystem);
 
-			InputStream inFIftiMain = getResourceAsStreamInner(ResourceNames.SharpFIftiMain);
-			if (inFIftiMain != null) {
-				LEInputStream in = new LEInputStream(inFIftiMain);
+			ResourceEntry entryFIftiMain = resolveEntry(ResourceNames.SharpFIftiMain);
+			if (entryFIftiMain != null) {
+				LEInputStream in = new LEInputStream(getStreamFromEntry(entryFIftiMain));
 				if (in.read(new byte[256], 0, 0x7a) < 0x7a) {
 					throw new IOException("Unexpected end of file " + ResourceNames.SharpFIftiMain);
 				}
