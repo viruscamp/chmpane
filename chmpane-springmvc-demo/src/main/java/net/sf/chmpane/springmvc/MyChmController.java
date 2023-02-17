@@ -41,11 +41,7 @@ public class MyChmController extends ChmController {
                 for (File chmfile : chmfiles) {
                     String name = chmfile.getName();
                     name = name.substring(0, name.length() - CHM_EXT.length());
-                    try {
-                        addMapping(name, chmfile);
-                    } catch (Exception ex) {
-                        log.error(MessageFormat.format("chmController.addMapping fail: {0} {1}", name, chmfile.getAbsolutePath()), ex);
-                    }
+                    addMapping(name, chmfile);
                 }
             }
         }
@@ -56,11 +52,7 @@ public class MyChmController extends ChmController {
                 if (hasMapping(name)) {
                     log.warn(MessageFormat.format("chmController duplicate chm path mapping: {0} found, will be override by {1}", name, filename));
                 }
-                try {
-                    addMapping(name, new File(filename));
-                } catch (Exception ex) {
-                    log.error(MessageFormat.format("chmController.addMapping fail: {0} {1}", name, filename), ex);
-                }
+                addMapping(name, new File(filename));
             }
         }
     }

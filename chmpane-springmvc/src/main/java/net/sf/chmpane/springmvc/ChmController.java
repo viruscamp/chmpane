@@ -18,11 +18,12 @@ import java.util.List;
 import java.util.Map;
 
 public class ChmController {
-    private Map<String, CHMFile> pathToChm = new HashMap<String, CHMFile>();
+    private Map<String, File> mappings = new HashMap<String, File>();
 
-    public void addMapping(String path, File file) throws IOException {
-        CHMFile chm = new CHMFile(file);
-        pathToChm.put(trimPath(path), chm);
+    private Map<File, CHMFile> mappingCached = new HashMap<File, CHMFile>();
+
+    public void addMapping(String path, File file) {
+        mappings.put(trimPath(path), file);
     }
 
     private String trimPath(String path) {
@@ -37,11 +38,11 @@ public class ChmController {
     }
 
     public void removeMapping(String path) {
-        pathToChm.remove(path);
+        mappings.remove(path);
     }
 
     public boolean hasMapping(String path) {
-        return pathToChm.containsKey(path);
+        return mappings.containsKey(path);
     }
 
     @ResponseStatus(value = HttpStatus.NOT_FOUND)
@@ -55,9 +56,30 @@ public class ChmController {
     }
 
     private CHMFile getChm(String path) {
-        CHMFile chm = pathToChm.get(path);
-        if (chm == null) {
+        File file = mappings.get(path);
+        if (file == null) {
             throw new ResourceNotFoundException("no chm file mapping to " + path);
+        }
+        CHMFile chm;
+        if (mappingCached.containsKey(file)) {
+            chm = mappingCached.get(file);
+        } else {
+            synchronized(file) {
+                if (mappingCached.containsKey(file)) {
+                    chm = mappingCached.get(file);
+                } else {
+                    try {
+                        chm = new CHMFile(file);
+                        mappingCached.put(file, chm);
+                    } catch (FileNotFoundException fnfe) {
+                        throw new ResourceNotFoundException("chm file " + file + " not found");
+                    } catch (IOException ioex) {
+                        throw new RuntimeException(ioex);
+                    } catch (Exception ex) {
+                        throw new RuntimeException(ex);
+                    }
+                }
+            }
         }
         return chm;
     }
@@ -69,7 +91,7 @@ public class ChmController {
         sb.append("<!doctype html>\n");
         sb.append("<head><title>Chm List</title></head>\n");
         sb.append("<body><ul>\n");
-        for (String path : pathToChm.keySet()) {
+        for (String path : mappings.keySet()) {
             sb.append("<li><a href='").append(path).append("/'>").append(path).append("</a></li>");
         }
         sb.append("</ul></body>");
@@ -197,11 +219,13 @@ public class ChmController {
     }
 
     private void siteMapItemToHtml(SiteMap.Item item, StringBuilder sb) {
-        if (item.getName() != null) {
-            if (item.getLocal() != null) {
-                sb.append("<li><a target='content' href='resources/").append(item.getLocal()).append("'>").append(item.getName()).append("</a>\n");
+        String name = item.getName();
+        if (name != null && !name.isEmpty()) {
+            String local = item.getLocal();
+            if (local != null && !local.isEmpty()) {
+                sb.append("<li><a target='content' href='resources/").append(local).append("'>").append(name).append("</a>\n");
             } else {
-                sb.append("<li>").append(item.getName()).append("\n");
+                sb.append("<li>").append(name).append("\n");
             }
         }
         if (item.getChildren() != null) {
@@ -211,7 +235,7 @@ public class ChmController {
             }
             sb.append("</ul>\n");
         }
-        if (item.getName() != null) {
+        if (name != null && !name.isEmpty()) {
             sb.append("</li>\n");
         }
     }
