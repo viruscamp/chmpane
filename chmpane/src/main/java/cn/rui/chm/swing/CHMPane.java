@@ -83,6 +83,7 @@ import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.StyleSheet;
 
+import cn.rui.chm.CHMFile;
 import cn.rui.chm.DataFormatException;
 import cn.rui.chm.protocol.chm.Handler;
 
@@ -134,8 +135,9 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 		split.setDividerSize(2);
 		add(split, BorderLayout.CENTER);
 
-		String siteMapName = Handler.getCHMFile(baseURL).getContentsFileName();
-		
+		CHMFile chm = Handler.getCHMFile(baseURL);
+		String siteMapName = chm.getContentsFileName();
+
 		factory = new SiteMapFactory(this);
 		if (siteMapName != null) {
 			siteMap.setEditorKitForContentType("text/html", new HTMLEditorKit() {
@@ -143,7 +145,7 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 					return factory;
 				}
 			});
-			siteMap.setPage(baseURL + siteMapName);
+			siteMap.setPage(joinUrl(baseURL, siteMapName));
 			siteMap.setEditable(false);
 			siteMap.addHyperlinkListener(this);
 			siteMap.getDocument().addDocumentListener(factory);
@@ -178,6 +180,10 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 		});
 		content.setEditable(false);
 		content.addHyperlinkListener(this);
+		String defaultTopic = chm.getDefaultTopic();
+		if (defaultTopic != null) {
+			content.setPage(joinUrl(baseURL, defaultTopic));
+		}
 		registerKeyStrokeActions();
 	}
 
@@ -331,7 +337,7 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 						launchURL(new URL("http://powermanja.sourceforge.net"));
 					} catch (MalformedURLException e1) {
 					}
-				}				
+				}
 			});
 		}
 	}
@@ -537,7 +543,7 @@ public class CHMPane extends JPanel implements HyperlinkListener {
                     // fix for 4697612 
                     int h = dotBounds.height;
                     yOffset = direction * (int)Math.ceil(scrollAmount / (double)h) * h; 
-                    newVis.y = constrainY(content, initialY + yOffset, yOffset);                        
+                    newVis.y = constrainY(content, initialY + yOffset, yOffset);
 
                     int newIndex;
 
@@ -688,5 +694,18 @@ public class CHMPane extends JPanel implements HyperlinkListener {
 		frame.setBounds(bounds);
 		frame.setResizable(true);
 		frame.setVisible(true);
+	}
+
+	private static String joinUrl(URL url, String... parts) {
+		StringBuilder sb = new StringBuilder(url.toString());
+		for(String part : parts) {
+			if (part.charAt(0) == '/') {
+				sb.append(part);
+			} else {
+				sb.append('/');
+				sb.append(part);
+			}
+		}
+		return sb.toString();
 	}
 }

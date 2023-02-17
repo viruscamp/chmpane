@@ -11,6 +11,8 @@ import org.springframework.web.servlet.HandlerMapping;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
+import java.net.FileNameMap;
+import java.net.URLConnection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,7 +94,7 @@ public class ChmController {
                 ((contentsFileName == null) ?
                 "<frameset cols='*'>\n" :
                 "<frameset cols='20%,*'>\n" +
-                "    <frame name='sitemap' src='sitemap.html' />\n") +
+                "    <frame name='sitemap' src='contents.html' />\n") +
                 "    <frame name='content' " +
                 ((defaultTopic == null) ? "" : ("src='resources/" + defaultTopic + "'")) +
                 "/>\n" +
@@ -120,19 +122,25 @@ public class ChmController {
         return sb.toString();
     }
 
-    private SiteMap getSiteMap(CHMFile chm) throws IOException {
+    @RequestMapping(value = "/{path}/contents", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
+    @ResponseBody
+    public SiteMap contentsJson(@PathVariable("path") String path) throws IOException {
+        CHMFile chm = getChm(path);
         SiteMap sitemap = chm.getContentsSiteMap();
         if (sitemap == null) {
-            throw new ResourceNotFoundException("no sitemap in the chm file");
+            throw new ResourceNotFoundException("no contents sitemap in the chm file");
         }
         return sitemap;
     }
 
-    @RequestMapping(value = "/{path}/sitemap", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
+    @RequestMapping(value = "/{path}/index", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
     @ResponseBody
-    public SiteMap siteMapJson(@PathVariable("path") String path) throws IOException {
+    public SiteMap indexJson(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        SiteMap sitemap = getSiteMap(chm);
+        SiteMap sitemap = chm.getIndexSiteMap();
+        if (sitemap == null) {
+            throw new ResourceNotFoundException("no index sitemap in the chm file");
+        }
         return sitemap;
     }
 
@@ -151,11 +159,29 @@ public class ChmController {
         sitemMapJs = val;
     }
 
-    @RequestMapping(value = "/{path}/sitemap", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
+    @RequestMapping(value = "/{path}/contents", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
     @ResponseBody
-    public String siteMapHtml(@PathVariable("path") String path) throws IOException {
+    public String contentsHtml(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        SiteMap sitemap = getSiteMap(chm);
+        SiteMap sitemap = chm.getContentsSiteMap();
+        if (sitemap == null) {
+            throw new ResourceNotFoundException("no contents sitemap in the chm file");
+        }
+        return sitemapHtml(sitemap);
+    }
+
+    @RequestMapping(value = "/{path}/index", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
+    @ResponseBody
+    public String indexHtml(@PathVariable("path") String path) throws IOException {
+        CHMFile chm = getChm(path);
+        SiteMap sitemap = chm.getIndexSiteMap();
+        if (sitemap == null) {
+            throw new ResourceNotFoundException("no index sitemap in the chm file");
+        }
+        return sitemapHtml(sitemap);
+    }
+
+    public String sitemapHtml(SiteMap sitemap) {
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'>\n");
         if (sitemMapCss != null && sitemMapCss.length() != 0) {
@@ -178,9 +204,9 @@ public class ChmController {
                 sb.append("<li>").append(item.getName()).append("\n");
             }
         }
-        if (item.getItems() != null) {
+        if (item.getChildren() != null) {
             sb.append("<ul>\n");
-            for (SiteMap.Item subItem : item.getItems()) {
+            for (SiteMap.Item subItem : item.getChildren()) {
                 siteMapItemToHtml(subItem, sb);
             }
             sb.append("</ul>\n");
@@ -190,10 +216,16 @@ public class ChmController {
         }
     }
 
-    @RequestMapping(value = "/{path}/sitemap.hhc", method = RequestMethod.GET)
-    public void siteMapHhc(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
+    @RequestMapping(value = "/{path}/contents.hhc", method = RequestMethod.GET, produces = "text/html")
+    public void contentsHhc(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
         CHMFile chm = getChm(path);
         file(chm, chm.getContentsFileName(), response);
+    }
+
+    @RequestMapping(value = "/{path}/index.hhk", method = RequestMethod.GET, produces = "text/html")
+    public void indexHhk(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
+        CHMFile chm = getChm(path);
+        file(chm, chm.getIndexFileName(), response);
     }
 
     @RequestMapping(value = "/{path}/sharp-system", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
@@ -219,14 +251,11 @@ public class ChmController {
         String bestMatchPattern = (String)request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
         AntPathMatcher apm = new AntPathMatcher();
         String filename = apm.extractPathWithinPattern(bestMatchPattern, uri);
-        if (!filename.startsWith("/")) {
-            filename = "/" + filename;
-        }
-
         file(chm, filename, response);
     }
 
     private void file(CHMFile chm, String filename, HttpServletResponse response) throws IOException {
+        filename = CHMFile.normalizeFilename(filename);
         InputStream is = null;
         OutputStream os = null;
         try {
@@ -273,15 +302,15 @@ public class ChmController {
                 return "text/css";
             else if (".js".equals(ext))
                 return "application/javascript";
+            else if (".hhc".equals(ext) || ".hhk".equals(ext) || ".html".equals(ext) || ".htm".equals(ext))
+                return "text/html";
         }
-        return "text/html";
+        return "application/octet-stream";
     }
 
-    /*
-    private String getContentType(String filename) {
+    private String getContentType1(String filename) {
         FileNameMap fileNameMap = URLConnection.getFileNameMap();
         String mimeType = fileNameMap.getContentTypeFor(filename);
         return mimeType;
     }
-    */
 }

@@ -30,18 +30,22 @@ public class MyChmController extends ChmController {
         if (scanDir != null && scanDir.length() != 0) {
             log.info("scan dir {} for chm files", scanDir);
             File dir = new File(scanDir);
-            File[] chmfiles = dir.listFiles(new FileFilter() {
-                public boolean accept(File f) {
-                    return f.isFile() && f.getName().toLowerCase().endsWith(CHM_EXT);
-                }
-            });
-            for (File chmfile : chmfiles) {
-                String name = chmfile.getName();
-                name = name.substring(0, name.length() - CHM_EXT.length());
-                try {
-                    addMapping(name, chmfile);
-                } catch (Exception ex) {
-                    log.error(MessageFormat.format("chmController.addMapping fail: {0} {1}", name, chmfile.getAbsolutePath()), ex);
+            if (!dir.exists() || !dir.isDirectory()) {
+                log.error("scan dir {} is invalid", scanDir);
+            } else {
+                File[] chmfiles = dir.listFiles(new FileFilter() {
+                    public boolean accept(File f) {
+                        return f.isFile() && f.getName().toLowerCase().endsWith(CHM_EXT);
+                    }
+                });
+                for (File chmfile : chmfiles) {
+                    String name = chmfile.getName();
+                    name = name.substring(0, name.length() - CHM_EXT.length());
+                    try {
+                        addMapping(name, chmfile);
+                    } catch (Exception ex) {
+                        log.error(MessageFormat.format("chmController.addMapping fail: {0} {1}", name, chmfile.getAbsolutePath()), ex);
+                    }
                 }
             }
         }

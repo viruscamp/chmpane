@@ -1,6 +1,5 @@
 spring.profiles.active: local
 chm:
-  #scan-dir: C:\Users\VirusCamp\Desktop\新建文件夹
-  scan-dir: C:\Windows\Help\nvcpl\
+  scan-dir: C:\Windows\Help\mui\0409\
   mappings:
     7-zip: C:\Program Files\7-Zip\7-zip.chm

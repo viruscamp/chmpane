@@ -22,6 +22,8 @@ import java.util.logging.Logger;
 
 /**
  * @see <a href="http://www.nongnu.org/chmspec/latest/Sitemap.html#HHC">HHC format</a>
+ * li is unclosed, and may contains other elements.
+ * param is unclosed without child elements.
  */
 @EqualsAndHashCode
 @ToString
@@ -33,6 +35,7 @@ public class SiteMap {
 
     SiteMap() {
         root = new Item();
+        root.children = new ArrayList<Item>();
     }
 
     private SiteMap(Page page) throws IOException {
@@ -40,7 +43,7 @@ public class SiteMap {
         try {
             Lexer lexer = new Lexer(page);
             Parser parser = new Parser(lexer);
-            NodeVisitor visitor = new SiteMapNodeVistor();
+            NodeVisitor visitor = new SiteMapNodeVisitor();
             parser.visitAllNodesWith(visitor);
         } catch (ParserException ex) {
             log.throwing("SiteMap", "SiteMap(Page page)", ex);
@@ -113,20 +116,20 @@ public class SiteMap {
             return Collections.unmodifiableMap(params);
         }
 
-        private List<Item> items;
-        public List<Item> getItems() {
-            if (items == null) {
+        private List<Item> children;
+        public List<Item> getChildren() {
+            if (children == null) {
                 return null;
             }
-            return Collections.unmodifiableList(items);
+            return Collections.unmodifiableList(children);
         }
     }
 
-    class SiteMapNodeVistor extends NodeVisitor {
+    class SiteMapNodeVisitor extends NodeVisitor {
         private Stack<Item> stack;
         private boolean closeUlToBeDetermined = false;
 
-        SiteMapNodeVistor() {
+        SiteMapNodeVisitor() {
             super();
             stack = new Stack<Item>();
             stack.push(root);
@@ -149,10 +152,10 @@ public class SiteMap {
 
             if ("li".equals(localName)) {
                 Item item = new Item();
-                if (stack.peek().items == null) {
+                if (stack.peek().children == null) {
                     stack.pop();
                 }
-                stack.peek().items.add(item);
+                stack.peek().children.add(item);
                 stack.push(item);
             } else if ("object".equals(localName)) {
                 Map<String, String> params = new HashMap<String, String>();
@@ -175,7 +178,7 @@ public class SiteMap {
                 }
             } else if ("ul".equalsIgnoreCase(localName)) {
                 List<Item> items = new LinkedList<Item>();
-                stack.peek().items = items;
+                stack.peek().children = items;
             }
         }
 
@@ -213,7 +216,7 @@ public class SiteMap {
         }
 
         private void closeUl() {
-            if (stack.peek().items == null) {
+            if (stack.peek().children == null) {
                 stack.pop();
             }
             stack.pop();

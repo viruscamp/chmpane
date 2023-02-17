@@ -581,6 +581,10 @@ public final class CHMFile implements Closeable {
 		});
 	}
 
+	public String getDefaultTopic() {
+		return sharpSystem.getProperty(SharpSystem.HhpOption.DefaultTopic);
+	}
+
 	/**
 	 * After close, the object can not be used any more.
 	 */
