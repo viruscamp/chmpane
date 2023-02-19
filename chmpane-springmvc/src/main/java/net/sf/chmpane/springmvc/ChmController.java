@@ -166,19 +166,19 @@ public class ChmController {
         return sitemap;
     }
 
-    private String sitemMapCss = null;
-    public String getSitemMapCss() {
-        return sitemMapCss;
+    private String siteMapCss = null;
+    public String getSiteMapCss() {
+        return siteMapCss;
     }
-    public void setSitemMapCss(String val) {
-        sitemMapCss = val;
+    public void setSiteMapCss(String val) {
+        siteMapCss = val;
     }
-    private String sitemMapJs = null;
-    public String getSitemMapJs() {
-        return sitemMapJs;
+    private String siteMapJs = null;
+    public String getSiteMapJs() {
+        return siteMapJs;
     }
-    public void setSitemMapJs(String val) {
-        sitemMapJs = val;
+    public void setSiteMapJs(String val) {
+        siteMapJs = val;
     }
 
     @RequestMapping(value = "/{path}/contents", method = RequestMethod.GET, produces = "text/html;charset=utf-8")
@@ -206,11 +206,11 @@ public class ChmController {
     public String sitemapHtml(SiteMap sitemap) {
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'>\n");
-        if (sitemMapCss != null && sitemMapCss.length() != 0) {
-            sb.append("<link type='text/css' rel='stylesheet' href='").append(sitemMapCss).append("'>");
+        if (siteMapCss != null && siteMapCss.length() != 0) {
+            sb.append("<link type='text/css' rel='stylesheet' href='").append(siteMapCss).append("'>");
         }
-        if (sitemMapJs != null && sitemMapJs.length() != 0) {
-            sb.append("<script type='text/javascript' src='").append(sitemMapJs).append("'></script>");
+        if (siteMapJs != null && siteMapJs.length() != 0) {
+            sb.append("<script type='text/javascript' src='").append(siteMapJs).append("'></script>");
         }
         sb.append("</head><body>\n");
         siteMapItemToHtml(sitemap.getRoot(), sb);

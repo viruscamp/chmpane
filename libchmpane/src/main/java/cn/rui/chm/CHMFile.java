@@ -268,7 +268,7 @@ public final class CHMFile implements Closeable {
 	@UtilityClass
 	public class ResourceNames {
 		public final String NameList = "::DataSpace/NameList";
-		public final String SharpSystem = cn.rui.chm.SharpSystem.Filename;
+		public final String SharpSystem = cn.rui.chm.SharpSystem.FILENAME;
 		public final String SharpFIftiMain = "/$FIftiMain";
 	}
 

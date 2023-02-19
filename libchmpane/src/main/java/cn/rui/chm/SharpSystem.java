@@ -16,7 +16,7 @@ import java.util.*;
 @ToString
 @Getter
 public class SharpSystem {
-    public static final String Filename = "/#SYSTEM";
+    public static final String FILENAME = "/#SYSTEM";
 
     public SharpSystem(InputStream inSharpSystem) throws IOException {
         LEInputStream in = new LEInputStream(inSharpSystem);
@@ -27,7 +27,7 @@ public class SharpSystem {
         while (in.available() > 0) {
             Entry entry = Entry.build(in);
             entries.add(entry);
-            if (entry.code == NonStringEntryCode.Entry4.code) {
+            if (entry.code == ENTRY_CODE_LCID) {
                 // entry.data.size() must be >= 4
                 lcid = LEInputStream.bytesToInt(entry.data);
                 lcidRead = true;
@@ -35,7 +35,7 @@ public class SharpSystem {
         }
         if (!lcidRead) {
             // TODO: should I set a default value to lcid ?
-            throw new DataFormatException("Cannot read lcid in file " + Filename);
+            throw new DataFormatException("Cannot read lcid in " + FILENAME);
         }
         this.lcid = lcid;
         this.charset = WindowsLanguageID.getDefaultCharset(lcid);
@@ -74,7 +74,7 @@ public class SharpSystem {
             int dataLen = in.read16();
             byte[] data = new byte[dataLen];
             if (dataLen > 0 && in.read(data) < data.length) {
-                throw new IOException("Unexpected end of entry[code=" + code + "] in file " + Filename);
+                throw new IOException("Unexpected end of entry[code=" + code + "] in file " + FILENAME);
             }
             return new Entry(code, data);
         }
@@ -96,24 +96,7 @@ public class SharpSystem {
         }
     }
 
-    @Getter
-    public enum NonStringEntryCode {
-        Entry4(4),
-        Entry7(7),
-        Entry8(8),
-        Entry9(9),
-        Entry10(10),
-        Entry11(11),
-        Entry12(12),
-        Entry13(13),
-        Entry14(14),
-        Entry15(15);
-
-        public final int code;
-        NonStringEntryCode(int code) {
-            this.code = code;
-        }
-    }
+    public static final int ENTRY_CODE_LCID = 4;
 
     @Getter
     public enum HhpOption {
@@ -124,6 +107,8 @@ public class SharpSystem {
 
         DefaultWindow(5, "Default Window"),
         CompiledFile(6, "Compiled file"),
+
+        Generator(9, "Generator"),
 
         DefaultFont(16, "Default Font");
 
@@ -165,10 +150,7 @@ public class SharpSystem {
             return null;
         }
 
-        private StringEntry(HhpOption hhpOption, byte[] data, Charset charset) {
-            super(hhpOption.code, data);
-            this.hhpOption = hhpOption;
-
+        public static String parseString(byte[] data, Charset charset) {
             // find first null
             int endIndex = data.length;
             for (int idx = 0; idx < data.length; idx++) {
@@ -178,10 +160,16 @@ public class SharpSystem {
                 }
             }
             if (charset == null) {
-                this.value = new String(data, 0, endIndex);
+                return new String(data, 0, endIndex);
             } else {
-                this.value = new String(data, 0, endIndex, charset);
+                return new String(data, 0, endIndex, charset);
             }
+        }
+
+        private StringEntry(HhpOption hhpOption, byte[] data, Charset charset) {
+            super(hhpOption.code, data);
+            this.hhpOption = hhpOption;
+            this.value = parseString(data, charset);
         }
 
         final HhpOption hhpOption;

@@ -75,7 +75,7 @@ class LEInputStream extends FilterInputStream {
         int b4 = read();
 		if ((b1 | b2 | b3 | b4) < 0)
 			throw new EOFException();
-        return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24));
+        return (b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24);
 	}
 
 	public static int bytesToInt(byte... b) {
@@ -83,7 +83,7 @@ class LEInputStream extends FilterInputStream {
 		int b2 = b[1];
 		int b3 = b[2];
 		int b4 = b[3];
-		return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24));
+		return (b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24);
 	}
 	
 	/**

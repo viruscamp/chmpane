@@ -24,8 +24,8 @@ public class MyChmController extends ChmController {
 
     @PostConstruct
     public void init() {
-        //setSitemMapCss("sitemap.css");
-        //setSitemMapJs("sitemap.js");
+        //setSiteMapCss("sitemap.css");
+        //setSiteMapJs("sitemap.js");
         String scanDir = chmConfig.getScanDir();
         if (scanDir != null && scanDir.length() != 0) {
             log.info("scan dir {} for chm files", scanDir);
