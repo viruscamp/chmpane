@@ -58,34 +58,30 @@ class LEInputStream extends FilterInputStream {
 	 * 16-bit little endian unsinged integer
 	 */
 	public int read16() throws IOException {
-        int b1 = read();
-        int b2 = read();
-        if ((b1 | b2) < 0)
-            throw new EOFException();
-        return (b1 << 0) + (b2 << 8);
+		byte[] buf = new byte[Short.SIZE / Byte.SIZE];
+		readFully(buf);
+		int b1 = buf[0] & 0xff;
+		int b2 = buf[1] & 0xff;
+		return (b1 << 0) + (b2 << 8);
 	}
-	
+
 	/**
 	 * 32-bit little endian integer
 	 */
 	public int read32() throws IOException {
-        int b1 = read();
-        int b2 = read();
-        int b3 = read();
-        int b4 = read();
-		if ((b1 | b2 | b3 | b4) < 0)
-			throw new EOFException();
-        return (b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24);
+		byte[] buf = new byte[Integer.SIZE / Byte.SIZE];
+		readFully(buf);
+		return bytesToInt(buf);
 	}
 
 	public static int bytesToInt(byte... b) {
-		int b1 = b[0];
-		int b2 = b[1];
-		int b3 = b[2];
-		int b4 = b[3];
+		int b1 = b[0] & 0xff;
+		int b2 = b[1] & 0xff;
+		int b3 = b[2] & 0xff;
+		int b4 = b[3] & 0xff;
 		return (b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24);
 	}
-	
+
 	/**
 	 * Encoded little endian integer
 	 */
@@ -104,27 +100,31 @@ class LEInputStream extends FilterInputStream {
 	 * 64-bit little endian integer
 	 */
 	public long read64() throws IOException {
-        int b1 = read();
-        int b2 = read();
-        int b3 = read();
-        int b4 = read();
-        int b5 = read();
-        int b6 = read();
-        int b7 = read();
-        int b8 = read();
-        if ((b1 | b2 | b3 | b4 | b5 | b6 | b7 | b8) < 0)
-            throw new EOFException();
-        return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24) 
-        		+ ((long)b5 << 32) + ((long)b6 << 40) + ((long)b7 << 48) + ((long)b8 << 56));
-	}
-
-	public long read64BE() throws IOException {
 		byte[] buf = new byte[Long.SIZE / Byte.SIZE];
 		readFully(buf);
 		return bytesToLong(buf);
 	}
 
-	public static long bytesToLong(byte... b) {
+	public static long bytesToLong(byte[] buf) {
+		long b1 = buf[0] & 0xff;
+		long b2 = buf[1] & 0xff;
+		long b3 = buf[2] & 0xff;
+		long b4 = buf[3] & 0xff;
+		long b5 = buf[4] & 0xff;
+		long b6 = buf[5] & 0xff;
+		long b7 = buf[6] & 0xff;
+		long b8 = buf[7] & 0xff;
+		return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24)
+				+ (b5 << 32) + (b6 << 40) + (b7 << 48) + (b8 << 56));
+	}
+
+	public long read64BE() throws IOException {
+		byte[] buf = new byte[Long.SIZE / Byte.SIZE];
+		readFully(buf);
+		return bytesToLongBE(buf);
+	}
+
+	public static long bytesToLongBE(byte... b) {
 		long result = 0;
 		for (int i = 0; i < 8; i++) {
 			result <<= 8;
@@ -132,19 +132,19 @@ class LEInputStream extends FilterInputStream {
 		}
 		return result;
 	}
-	
+
 	public String readUTF8(int len) throws IOException {
-		byte[]buf = new byte[len];
+		byte[] buf = new byte[len];
 		readFully(buf);
 		return new String(buf, 0, len, "UTF-8");
 	}
-	
+
 	public String readUTF16(int len) throws IOException {
-		byte[]buf = new byte[len];
+		byte[] buf = new byte[len];
 		readFully(buf);
 		return new String(buf, 0, len, "UTF-16LE");
 	}
-			
+
 	public String readGUID() throws IOException {
 		return toHexString(read32(), 8) + 
 			"-" + toHexString(read16(), 4) + "-" + toHexString(read16(), 4) +
@@ -163,7 +163,7 @@ class LEInputStream extends FilterInputStream {
 		long leastSigBits = p4;
 		return new UUID(mostSigBits, leastSigBits);
 	}
-	
+
 	private String toHexString(int v, int len) {
 		StringBuffer b = new StringBuffer();
 		for (int i = 0; i < len; i++)
@@ -171,8 +171,8 @@ class LEInputStream extends FilterInputStream {
 		b.append(Long.toHexString(v));
 		return b.substring(b.length() - len).toUpperCase();
 	}
-	
-    public void readFully(byte b[]) throws IOException {
+
+	public void readFully(byte b[]) throws IOException {
 		readFully(b, 0, b.length);
 	}
 

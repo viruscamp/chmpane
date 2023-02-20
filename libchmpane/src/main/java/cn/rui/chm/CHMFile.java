@@ -268,8 +268,10 @@ public final class CHMFile implements Closeable {
 	@UtilityClass
 	public class ResourceNames {
 		public final String NameList = "::DataSpace/NameList";
-		public final String SharpSystem = cn.rui.chm.SharpSystem.FILENAME;
-		public final String SharpFIftiMain = "/$FIftiMain";
+		public final String LzxcControlData = "::DataSpace/Storage/MSCompressed/ControlData";
+		public final String LzxcResetTable = "::DataSpace/Storage/MSCompressed/Transform/{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable";
+		public final String SharpSystem = "/#SYSTEM";
+		public final String DollarFIftiMain = "/$FIftiMain";
 	}
 
 	/**
@@ -618,8 +620,7 @@ public final class CHMFile implements Closeable {
 		final int cacheSize;
 		public LZXCConfig() throws IOException, DataFormatException {
 			// control data
-			LEInputStream in = new LEInputStream(getUncompressedResourceAsStream(
-					"::DataSpace/Storage/MSCompressed/ControlData", "LZXC control data"));
+			LEInputStream in = new LEInputStream(getUncompressedResourceAsStream(ResourceNames.LzxcControlData, "LZXC control data"));
 			in.read32(); // words following LZXC
 			if ( ! in.readUTF8(4).equals("LZXC")) {
 				throw new DataFormatException("Must be in LZX Compression");
@@ -633,9 +634,7 @@ public final class CHMFile implements Closeable {
 			in.read32(); // = 0
 
 			// reset table
-			in = new LEInputStream(getUncompressedResourceAsStream(
-					"::DataSpace/Storage/MSCompressed/Transform/{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable",
-					"LZXC reset table"));
+			in = new LEInputStream(getUncompressedResourceAsStream(ResourceNames.LzxcResetTable, "LZXC reset table"));
 			int version = in.read32();
 			if ( version != 2) log.warning("LZXC version unknown " + version);
 			addressTable = new long[in.read32()];
@@ -820,16 +819,16 @@ public final class CHMFile implements Closeable {
 			putLcid(values, lcidITSP, "LCID of Itss.Dll, in ITSP Header");
 			putLcid(values, sharpSystem.getLcid(), "LCID in " + ResourceNames.SharpSystem);
 
-			ResourceEntry entryFIftiMain = resolveEntry(ResourceNames.SharpFIftiMain);
+			ResourceEntry entryFIftiMain = resolveEntry(ResourceNames.DollarFIftiMain);
 			if (entryFIftiMain != null) {
 				LEInputStream in = new LEInputStream(getStreamFromEntry(entryFIftiMain));
 				if (in.read(new byte[256], 0, 0x7a) < 0x7a) {
-					throw new IOException("Unexpected end of file " + ResourceNames.SharpFIftiMain);
+					throw new IOException("Unexpected end of file " + ResourceNames.DollarFIftiMain);
 				}
 				int codePageSharpFIftiMain = in.read32();
-				putCodePage(values, codePageSharpFIftiMain, "CodePage in " + ResourceNames.SharpFIftiMain);
+				putCodePage(values, codePageSharpFIftiMain, "CodePage in " + ResourceNames.DollarFIftiMain);
 				int lcidSharpFIftiMain = in.read32();
-				putLcid(values, lcidSharpFIftiMain, "LCID in " + ResourceNames.SharpFIftiMain);
+				putLcid(values, lcidSharpFIftiMain, "LCID in " + ResourceNames.DollarFIftiMain);
 			}
 		} catch(Exception ex) {
 			log.throwing("CHMFile", "getLangs", ex);
