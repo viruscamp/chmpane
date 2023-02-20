@@ -109,8 +109,6 @@ public final class CHMFile implements Closeable {
 			public List<String> get() throws IOException {
 				if (rootIndexChunkNo >= 0) {
 					fillChunkRecursively(rootIndexChunk);
-				} else {
-					log.warning("should never goes here");
 				}
 				return collectResources();
 			}
@@ -382,7 +380,7 @@ public final class CHMFile implements Closeable {
 		// if the header length is really 0x60, read the final QWORD
 		// or the content should be immediate after header section 1
 		contentOffset = (length >= CHM_HEADER_LENGTH) ? inHeader.read64() : (off1 + len1);
-		log.fine("CHM content offset " + contentOffset);
+		//log.fine("CHM content offset " + contentOffset);
 
 		/* Step 1.1 (Optional)  CHM header section 0 */
 		LEInputStream inHeader0 = new LEInputStream(createInputStream(off0, (int) len0)); // len0 can't exceed 32-bit
@@ -630,7 +628,7 @@ public final class CHMFile implements Closeable {
 			resetInterval = in.read32(); // huffman reset interval for blocks
 			windowSize = in.read32() * 0x8000;	// usu. 0x10, windows size in 0x8000-byte blocks
 			cacheSize = in.read32();	// unknown, 0, 1, 2
-			log.info("LZX cache size " + cacheSize);
+			//log.info("LZX cache size " + cacheSize);
 			in.read32(); // = 0
 
 			// reset table
@@ -719,7 +717,7 @@ public final class CHMFile implements Closeable {
 									int len = (int) ((blockNo + 1 < addressTable.length) ?
 											(addressTable[blockNo + 1] - addressTable[blockNo]) :
 											(compressedLength - addressTable[blockNo]));
-									log.fine("readBlock " + blockNo + ": " + (sectionOffset + addressTable[blockNo]) + "+ " + len);
+									//log.fine("readBlock " + blockNo + ": " + (sectionOffset + addressTable[blockNo]) + "+ " + len);
 									inflater.inflate(i == 0, // reset flag
 											createInputStream(sectionOffset + addressTable[blockNo], len),
 											cache[i]); // here is the heart
@@ -802,14 +800,14 @@ public final class CHMFile implements Closeable {
 		values.put(name, lcid);
 		Locale locale = WindowsLanguageID.getLocale(lcid);
 		values.put("Locale from " + name, locale);
-		log.info(String.format(name + ": 0x%04X , locale: %1s", lcid, locale));
+		//log.info(String.format(name + ": 0x%04X , locale: %1s", lcid, locale));
 	}
 
 	private static void putCodePage(Map<String, Object> values, int codePage, String name) {
 		values.put(name, codePage);
 		Charset charset = WindowsLanguageID.getCharsetByCodePage(codePage);
 		values.put("Charset from " + name, charset);
-		log.info(String.format(name + ": %0$d , charset: %1s", codePage, charset));
+		//log.info(String.format(name + ": %0$d , charset: %1s", codePage, charset));
 	}
 
 	public Map<String, Object> getLangs() {
