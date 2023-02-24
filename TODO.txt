@@ -1,9 +1,27 @@
 /swing ui
 	/tree + /content + /back/forth + // font-size +
 	linkback + search? +  print? + annotation/edit?
-swt ui
-	...
-eclipse plugin
-	outline + browser + backforth + CHM project + build/export
-eclipse rcp
-	...
+
+web ui
+    beauty ui
+
+full text search
+
+multiple <ul> in root in contents.hhc
+
+multiple <object> under <li> in index.hhk, displayed as popup list
+
+binarytoc binaryindex
+
+url and <a>
+    absolute path <head><base href="" /></head> is useless
+        <background="/flag&clouds.gif">
+        <a href="/memcopy.htm">©1998 Microsoft Corporation. All rights reserved.</a>
+
+    link to other file
+        using Web-based protocol handlers to redirect
+        force backend load the file
+        <param name="Local" value="mk:@MSITStore:%systemroot%\help\license.chm::/LIC_QUESTIONS.htm">
+
+    merge
+        <param name="Merge" value="whatnew.chm::\whatnew.hhc">

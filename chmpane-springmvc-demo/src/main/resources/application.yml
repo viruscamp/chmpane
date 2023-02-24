@@ -3,3 +3,7 @@ chm:
   scan-dir: C:\Windows\Help\mui\0409\
   mappings:
     7-zip: C:\Program Files\7-Zip\7-zip.chm
+
+spring:
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss

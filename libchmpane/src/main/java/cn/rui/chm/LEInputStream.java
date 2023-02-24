@@ -82,6 +82,14 @@ class LEInputStream extends FilterInputStream {
 		return (b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24);
 	}
 
+	public static int bytesToInt(byte[] b, int offset) {
+		int b1 = b[offset + 0] & 0xff;
+		int b2 = b[offset + 1] & 0xff;
+		int b3 = b[offset + 2] & 0xff;
+		int b4 = b[offset + 3] & 0xff;
+		return (b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24);
+	}
+
 	/**
 	 * Encoded little endian integer
 	 */
@@ -114,6 +122,19 @@ class LEInputStream extends FilterInputStream {
 		long b6 = buf[5] & 0xff;
 		long b7 = buf[6] & 0xff;
 		long b8 = buf[7] & 0xff;
+		return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24)
+				+ (b5 << 32) + (b6 << 40) + (b7 << 48) + (b8 << 56));
+	}
+
+	public static long bytesToLong(byte[] buf, int offset) {
+		long b1 = buf[offset + 0] & 0xff;
+		long b2 = buf[offset + 1] & 0xff;
+		long b3 = buf[offset + 2] & 0xff;
+		long b4 = buf[offset + 3] & 0xff;
+		long b5 = buf[offset + 4] & 0xff;
+		long b6 = buf[offset + 5] & 0xff;
+		long b7 = buf[offset + 6] & 0xff;
+		long b8 = buf[offset + 7] & 0xff;
 		return ((b1 << 0) + (b2 << 8) + (b3 << 16) + (b4 << 24)
 				+ (b5 << 32) + (b6 << 40) + (b7 << 48) + (b8 << 56));
 	}

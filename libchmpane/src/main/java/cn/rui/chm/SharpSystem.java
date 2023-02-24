@@ -19,24 +19,40 @@ public class SharpSystem {
     public SharpSystem(InputStream inSharpSystem) throws IOException {
         LEInputStream in = new LEInputStream(inSharpSystem);
         version = in.read32();
-        int lcid = 0;
-        boolean lcidRead = false;
+        Integer lcid = null;
+        boolean fullTextSearch = false;
+        int binaryToc = 0;
+        int binaryIndex = 0;
+        Date createTime = null;
         List<Entry> entries = new ArrayList<Entry>(20);
         while (in.available() > 0) {
             Entry entry = Entry.build(in);
             entries.add(entry);
-            if (entry.code == ENTRY_CODE_LCID) {
+            if (entry.code == ENTRY_CODE_OPTIONS) {
                 // entry.data.size() must be >= 4
                 lcid = LEInputStream.bytesToInt(entry.data);
-                lcidRead = true;
+                int fts = LEInputStream.bytesToInt(entry.data, 8);
+                fullTextSearch = (fts != 0);
+                long windowsTick = LEInputStream.bytesToLong(entry.data, 0x14);
+                createTime = Utils.windowsTickToDate(windowsTick);
+            }
+            if (entry.code == ENTRY_CODE_BINARY_TOC) {
+                binaryToc = LEInputStream.bytesToInt(entry.data);
+            }
+            if (entry.code == ENTRY_CODE_BINARY_INDEX) {
+                binaryIndex = LEInputStream.bytesToInt(entry.data);
             }
         }
-        if (!lcidRead) {
+        if (lcid == null) {
             // TODO: should I set a default value to lcid ?
             throw new DataFormatException("Cannot read lcid in /#SYSTEM");
         }
         this.lcid = lcid;
         this.charset = WindowsLanguageID.getDefaultCharset(lcid);
+        this.fullTextSearch = fullTextSearch;
+        this.binaryToc = binaryToc;
+        this.binaryIndex = binaryIndex;
+        this.createTime = createTime;
 
         Map<HhpOption, String> properties = new HashMap<HhpOption, String>();
         for (int i = 0; i < entries.size(); i++) {
@@ -57,6 +73,10 @@ public class SharpSystem {
      */
     private final int lcid;
     private final Charset charset;
+    private final boolean fullTextSearch;
+    private final int binaryToc;
+    private final int binaryIndex;
+    private final Date createTime;
     private final List<Entry> entries;
     private final Map<HhpOption, String> properties;
 
@@ -92,7 +112,9 @@ public class SharpSystem {
         }
     }
 
-    public static final int ENTRY_CODE_LCID = 4;
+    public static final int ENTRY_CODE_OPTIONS = 4;
+    public static final int ENTRY_CODE_BINARY_TOC = 11;
+    public static final int ENTRY_CODE_BINARY_INDEX = 7;
 
     @Getter
     public enum HhpOption {

@@ -278,17 +278,17 @@ public class ChmController {
         file(chm, filename, response);
     }
 
-    private void file(CHMFile chm, String filename, HttpServletResponse response) throws IOException {
-        filename = CHMFile.normalizeFilename(filename);
+    private void file(CHMFile chm, String resourceName, HttpServletResponse response) throws IOException {
+        resourceName = CHMFile.normalizeFilename(resourceName);
         InputStream is = null;
         OutputStream os = null;
         try {
-            response.setContentType(getContentType(filename));
-            is = chm.getResourceAsStream(filename);
+            response.setContentType(getContentType(resourceName));
+            is = chm.getResourceAsStream(resourceName);
             os = response.getOutputStream();
             copyLarge(is, os);
         } catch (FileNotFoundException ex) {
-            throw new ResourceNotFoundException("no file: " + filename + " in chm document.");
+            throw new ResourceNotFoundException("no resource: " + resourceName + " in chm document.");
         } finally {
             if (is != null) {
                 try {

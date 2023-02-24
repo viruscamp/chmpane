@@ -45,4 +45,13 @@ public  class Utils {
         }
         return (T)(value == cached ? null : value);
     }
+
+    public static final long WINDOWS_TICK = 10000L;  //10的7次方
+    public static final long SEC_TO_UNIX_EPOCH = 11644473600000L; //1601与1970的时间间隔 毫秒
+
+    java.util.Date windowsTickToDate(long windowsTicks)
+    {
+        long mills = (windowsTicks / WINDOWS_TICK - SEC_TO_UNIX_EPOCH);
+        return new java.util.Date(mills);
+    }
 }

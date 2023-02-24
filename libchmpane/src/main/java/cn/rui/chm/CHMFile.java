@@ -49,6 +49,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
 
 /**
  * @author Rui Shen
@@ -154,9 +155,9 @@ public final class CHMFile implements Closeable {
 		fillChunk(chunk);
 		if (chunk.content instanceof ListingChunk) {
 			List<ResourceEntry> children = ((ListingChunk) chunk.content).children;
-			int idx = Collections.<ResourceEntry>binarySearch(children, new ResourceEntry(name),
-					new Comparator<ResourceEntry>() {
-						public int compare(ResourceEntry o1, ResourceEntry o2) {
+			int idx = Collections.binarySearch(children, new ResourceEntryKey(name),
+					new Comparator<ResourceEntryKey>() {
+						public int compare(ResourceEntryKey o1, ResourceEntryKey o2) {
 							return String.CASE_INSENSITIVE_ORDER.compare(o1.name, o2.name);
 						}
 					}
@@ -166,9 +167,9 @@ public final class CHMFile implements Closeable {
 			}
 		} else if (chunk.content instanceof IndexChunk) {
 			List<DirectoryChunk> children = ((IndexChunk) chunk.content).children;
-			int idx = Collections.<DirectoryChunk>binarySearch(children, new DirectoryChunk(Integer.MIN_VALUE, name),
-					new Comparator<DirectoryChunk>() {
-						public int compare(DirectoryChunk o1, DirectoryChunk o2) {
+			int idx = Collections.binarySearch(children, new DirectoryChunkKey(name),
+					new Comparator<DirectoryChunkKey>() {
+						public int compare(DirectoryChunkKey o1, DirectoryChunkKey o2) {
 							return String.CASE_INSENSITIVE_ORDER.compare(o1.name, o2.name);
 						}
 					}
@@ -210,7 +211,7 @@ public final class CHMFile implements Closeable {
 			if (chunk.content != null) {
 				return chunk;
 			}
-			LEInputStream in = new LEInputStream(createInputStream(chunkOffset + chunk.chunkNo * (long)chunkSize, chunkSize));
+			LEInputStream in = new LEInputStream(rawInputStream(chunkOffset + chunk.chunkNo * (long)chunkSize, chunkSize));
 			String chunkMagic = in.readUTF8(4);
 			if (DirectoryChunkType.IndexChunk.magic.equals(chunkMagic)) {
 				ArrayList<DirectoryChunk> children = new ArrayList<DirectoryChunk>();
@@ -267,6 +268,7 @@ public final class CHMFile implements Closeable {
 	public class ResourceNames {
 		public final String NameList = "::DataSpace/NameList";
 		public final String LzxcControlData = "::DataSpace/Storage/MSCompressed/ControlData";
+		public final String LzxcContent ="::DataSpace/Storage/MSCompressed/Content";
 		public final String LzxcResetTable = "::DataSpace/Storage/MSCompressed/Transform/{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable";
 		public final String SharpSystem = "/#SYSTEM";
 		public final String DollarFIftiMain = "/$FIftiMain";
@@ -297,22 +299,27 @@ public final class CHMFile implements Closeable {
 		}
 	}
 
-	static class DirectoryChunk {
-		final int chunkNo;
+	static class DirectoryChunkKey {
 		String name;
+		public DirectoryChunkKey(String name) {
+			this.name = name;
+		}
+	}
+	static class DirectoryChunk extends DirectoryChunkKey {
+		final int chunkNo;
 
-		static abstract class Content {
-			abstract DirectoryChunkType getType();
+		interface Content {
+			DirectoryChunkType getType();
 		}
 		Content content;
 
 		DirectoryChunk(int chunkNo, String name) {
+			super(name);
 			this.chunkNo = chunkNo;
-			this.name = name;
 		}
 	}
 
-	static class ListingChunk extends DirectoryChunk.Content {
+	static class ListingChunk implements DirectoryChunk.Content {
 		@Override
 		public DirectoryChunkType getType() {
 			return DirectoryChunkType.ListingChunk;
@@ -323,7 +330,7 @@ public final class CHMFile implements Closeable {
 		}
 	}
 
-	static class IndexChunk extends DirectoryChunk.Content {
+	static class IndexChunk implements DirectoryChunk.Content {
 		@Override
 		public DirectoryChunkType getType() {
 			return DirectoryChunkType.IndexChunk;
@@ -350,7 +357,7 @@ public final class CHMFile implements Closeable {
 
 		/** Step 1. CHM header  */
 		// The header length is 0x60 (96)
-		LEInputStream inHeader = new LEInputStream(createInputStream(0, CHM_HEADER_LENGTH));
+		LEInputStream inHeader = new LEInputStream(rawInputStream(0, CHM_HEADER_LENGTH));
 		if (!inHeader.readUTF8(4).equals("ITSF")) {
 			throw new DataFormatException("CHM file should start with 'ITSF'");
 		}
@@ -383,7 +390,7 @@ public final class CHMFile implements Closeable {
 		//log.fine("CHM content offset " + contentOffset);
 
 		/* Step 1.1 (Optional)  CHM header section 0 */
-		LEInputStream inHeader0 = new LEInputStream(createInputStream(off0, (int) len0)); // len0 can't exceed 32-bit
+		LEInputStream inHeader0 = new LEInputStream(rawInputStream(off0, (int) len0)); // len0 can't exceed 32-bit
 		inHeader0.read32(); // 0x01FE;
 		inHeader0.read32(); // 0;
 		if ((fileLength = inHeader0.read64()) != fileAccess.length()) {
@@ -393,7 +400,7 @@ public final class CHMFile implements Closeable {
 		inHeader0.read32(); // 0;
 		
 		/* Step 1.2 CHM header section 1: directory index header */
-		LEInputStream inDirectory = new LEInputStream(createInputStream(off1, CHM_DIRECTORY_HEADER_LENGTH));
+		LEInputStream inDirectory = new LEInputStream(rawInputStream(off1, CHM_DIRECTORY_HEADER_LENGTH));
 
 		if (!inDirectory.readUTF8(4).equals("ITSP")) {
 			throw new DataFormatException("CHM directory header should start with 'ITSP'");
@@ -436,14 +443,14 @@ public final class CHMFile implements Closeable {
 		}
 
 		/* Step 2. CHM name list: content sections */
-		LEInputStream leinNameList = new LEInputStream(getUncompressedResourceAsStream(ResourceNames.NameList, null));
-		leinNameList.read16(); // length in 16-bit-word, = in.length() / 2
-		sections = new Section[leinNameList.read16()];
+		LEInputStream isNameList = new LEInputStream(getUncompressedResourceAsStream(ResourceNames.NameList, null));
+		isNameList.read16(); // length in 16-bit-word, = in.length() / 2
+		sections = new Section[isNameList.read16()];
 		LZXCConfig lzxcConfig = null;
 		for (int i = 0; i < sections.length; i ++) {
-			String name = leinNameList.readUTF16(leinNameList.read16() << 1);
+			String name = isNameList.readUTF16(isNameList.read16() << 1);
 			if ("Uncompressed".equals(name)) {
-				sections[i] = new Section();
+				sections[i] = new UncompressedSection();
 			} else if ("MSCompressed".equals(name)) {
 				if (lzxcConfig == null) {
 					lzxcConfig = new LZXCConfig(); // use Uncompressed sections, should be sections[0]
@@ -452,7 +459,7 @@ public final class CHMFile implements Closeable {
 			} else {
 				throw new DataFormatException("Unknown content section " + name);
 			}
-			leinNameList.read16(); // = null
+			isNameList.read16(); // = null
 		}
 
 		ResourceEntry entrySharpSystem = resolveEntry(ResourceNames.SharpSystem);
@@ -460,13 +467,15 @@ public final class CHMFile implements Closeable {
 			throw new DataFormatException("Missing " + ResourceNames.SharpSystem + " entry");
 		}
 		sharpSystem = new SharpSystem(getStreamFromEntry(entrySharpSystem));
+
+		readAll();
 	}
 
 	/**
 	 * Read len bytes from file beginning from offset.
 	 * Since it's really a ByteArrayInputStream, close() operation is optional
 	 */
-	private InputStream createInputStream(long offset, int len) throws IOException {
+	private InputStream rawInputStream(long offset, int len) throws IOException {
 		synchronized(fileAccess) {
 			fileAccess.seek(offset);
 			byte[] b = new byte[len]; // TODO performance?
@@ -500,7 +509,7 @@ public final class CHMFile implements Closeable {
 		if (entry == null) {
 			throw new DataFormatException("Missing " + (simpleName != null ? simpleName : name) + " entry");
 		}
-		return createInputStream(contentOffset + entry.offset, entry.length);
+		return rawInputStream(contentOffset + entry.offset, entry.length);
 	}
 
 	@Getter
@@ -601,9 +610,13 @@ public final class CHMFile implements Closeable {
 		close();
 	}
 
-	class Section {
+	interface Section {
+		InputStream resolveInputStream(long off, int len) throws IOException;
+	}
+
+	class UncompressedSection implements Section {
 		public InputStream resolveInputStream(long off, int len) throws IOException {
-			return createInputStream(contentOffset + off, len);
+			return rawInputStream(contentOffset + off, len);
 		}
 	}
 
@@ -648,7 +661,7 @@ public final class CHMFile implements Closeable {
 //			cachedBlocks = new byte[resetInterval][blockSize];
 //			cachedResetBlockNo = -1;
 
-			ResourceEntry entry = resolveEntry("::DataSpace/Storage/MSCompressed/Content");
+			ResourceEntry entry = resolveEntry(ResourceNames.LzxcContent);
 			if (entry == null) {
 				throw new DataFormatException("LZXC content missing");
 			}
@@ -665,7 +678,7 @@ public final class CHMFile implements Closeable {
 			return new LZXCSection();
 		}
 
-		class LZXCSection extends Section {
+		class LZXCSection implements Section {
 			final LRUCache<Integer, byte[][]> cachedBlocks;
 			LZXCSection() {
 				cachedBlocks = new LRUCache<Integer, byte[][]>((1 + cacheSize) << 2);
@@ -719,7 +732,7 @@ public final class CHMFile implements Closeable {
 											(compressedLength - addressTable[blockNo]));
 									//log.fine("readBlock " + blockNo + ": " + (sectionOffset + addressTable[blockNo]) + "+ " + len);
 									inflater.inflate(i == 0, // reset flag
-											createInputStream(sectionOffset + addressTable[blockNo], len),
+											rawInputStream(sectionOffset + addressTable[blockNo], len),
 											cache[i]); // here is the heart
 								}
 								cachedBlocks.put(cachedNo, cache);
@@ -774,21 +787,23 @@ public final class CHMFile implements Closeable {
 		}
 	}
 
-	static class ResourceEntry {
-		String name;
-		int section;
-		long offset;
-		int length;
+	static class ResourceEntryKey {
+		final String name;
+		ResourceEntryKey(String name) {
+			this.name = name;
+		}
+	}
+
+	static class ResourceEntry extends ResourceEntryKey {
+		final int section;
+		final long offset;
+		final int length;
 
 		public ResourceEntry(LEInputStream in) throws IOException {
-			name = in.readUTF8(in.readENC());
+			super(in.readUTF8(in.readENC()));
 			section = in.readENC();
 			offset = in.readENC();
 			length = in.readENC();
-		}
-
-		ResourceEntry(String name) {
-			this.name = name;
 		}
 
 		public String toString() {
@@ -832,6 +847,39 @@ public final class CHMFile implements Closeable {
 			log.throwing("CHMFile", "getLangs", ex);
 		}
 		return values;
+	}
+
+	public void readAll() {
+		log.info("begin file: " + file.getAbsolutePath());
+		byte[] b = new byte[1024];
+		try {
+			int resourceSuccess = 0;
+			int resourceFailed = 0;
+			for(String name : getResources()) {
+				try {
+					ResourceEntry entry = resolveEntry(name);
+					InputStream ris = getStreamFromEntry(entry);
+					int actualLength = 0;
+					int read = 0;
+					while ((read = ris.read(b)) > 0) {
+						actualLength += read;
+					}
+					if (entry.length != actualLength) {
+						log.log(Level.SEVERE, "resource: {0} length:{1} actual length:{2}",
+								new Object[]{name, entry.length, actualLength});
+					}
+					resourceSuccess++;
+				} catch (Exception ex) {
+					log.log(Level.SEVERE, "fail resource: {0}", new Object[]{name});
+					log.log(Level.SEVERE, "", ex);
+					resourceFailed++;
+				}
+			}
+			log.log(Level.INFO, "success file: {0} resourceSuccess:{1} resourceFailed:{2}",
+					new Object[]{file.getAbsoluteFile(), resourceSuccess, resourceFailed});
+		} catch (Exception ex) {
+			log.info("failed file: " + file.getAbsolutePath());
+		}
 	}
 
 	public static void main(String[]argv) throws Exception {
