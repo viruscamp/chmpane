@@ -1,5 +1,6 @@
 package net.sf.chmpane.springmvc;
 
+import cn.rui.chm.CHMFile;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,11 +8,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import javax.annotation.PostConstruct;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.Map;
 
@@ -55,6 +60,13 @@ public class MyChmController extends ChmController {
                 addMapping(name, new File(filename));
             }
         }
+    }
+
+    @RequestMapping(value = "/{path}/testReadAll", method = RequestMethod.GET)
+    @ResponseBody
+    public String testReadAll(@PathVariable("path") String path) {
+        CHMFile chm = getChm(path);
+        return chm.testReadAll();
     }
 
     @Autowired

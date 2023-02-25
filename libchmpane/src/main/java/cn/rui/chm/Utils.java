@@ -17,7 +17,7 @@ public  class Utils {
                 value = cached.get();
                 if (value == null) {
                     final T actualValue = supplier.get();
-                    value = actualValue == null ? cached : actualValue;
+                    value = (actualValue == null) ? cached : actualValue;
                     cached.set(value);
                 }
             }

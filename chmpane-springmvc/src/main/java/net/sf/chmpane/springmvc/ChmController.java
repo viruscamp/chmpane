@@ -3,13 +3,15 @@ package net.sf.chmpane.springmvc;
 import cn.rui.chm.CHMFile;
 import cn.rui.chm.SharpSystem;
 import cn.rui.chm.SiteMap;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.HandlerMapping;
 
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.*;
 import java.net.FileNameMap;
 import java.net.URLConnection;
@@ -55,7 +57,7 @@ public class ChmController {
         }
     }
 
-    private CHMFile getChm(String path) {
+    protected CHMFile getChm(String path) {
         File file = mappings.get(path);
         if (file == null) {
             throw new ResourceNotFoundException("no chm file mapping to " + path);
@@ -241,15 +243,15 @@ public class ChmController {
     }
 
     @RequestMapping(value = "/{path}/contents.hhc", method = RequestMethod.GET, produces = "text/html")
-    public void contentsHhc(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
+    public ResponseEntity contentsHhc(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        file(chm, chm.getContentsFileName(), response);
+        return resource(chm, chm.getContentsFileName());
     }
 
     @RequestMapping(value = "/{path}/index.hhk", method = RequestMethod.GET, produces = "text/html")
-    public void indexHhk(@PathVariable("path") String path, HttpServletResponse response) throws IOException {
+    public ResponseEntity indexHhk(@PathVariable("path") String path) throws IOException {
         CHMFile chm = getChm(path);
-        file(chm, chm.getIndexFileName(), response);
+        return resource(chm, chm.getIndexFileName());
     }
 
     @RequestMapping(value = "/{path}/sharp-system", method = RequestMethod.GET, produces = "application/json;charset=utf-8")
@@ -267,49 +269,31 @@ public class ChmController {
     }
 
     @RequestMapping("/{path}/resources/**")
-    public void file(@PathVariable("path") String path, HttpServletRequest request,
-                     HttpServletResponse response) throws IOException {
+    public ResponseEntity resource(@PathVariable("path") String path, HttpServletRequest request) throws IOException {
         CHMFile chm = getChm(path);
 
         String uri = (String)request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
         String bestMatchPattern = (String)request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
         AntPathMatcher apm = new AntPathMatcher();
         String filename = apm.extractPathWithinPattern(bestMatchPattern, uri);
-        file(chm, filename, response);
+        return resource(chm, filename);
     }
 
-    private void file(CHMFile chm, String resourceName, HttpServletResponse response) throws IOException {
-        resourceName = CHMFile.normalizeFilename(resourceName);
-        InputStream is = null;
-        OutputStream os = null;
+    public static final String CONTENT_TYPE = "Content-Type";
+
+    private ResponseEntity resource(CHMFile chm, String resourceName) throws IOException {
         try {
-            response.setContentType(getContentType(resourceName));
-            is = chm.getResourceAsStream(resourceName);
-            os = response.getOutputStream();
-            copyLarge(is, os);
-        } catch (FileNotFoundException ex) {
-            throw new ResourceNotFoundException("no resource: " + resourceName + " in chm document.");
-        } finally {
-            if (is != null) {
-                try {
-                    is.close();
-                } catch (Exception ex) {
-                }
-            }
-        }
-    }
+            resourceName = CHMFile.normalizeFilename(resourceName);
 
-    private static final int DEFAULT_BUFFER_SIZE = 1024 * 4;
-    public static long copyLarge(InputStream input, OutputStream output)
-            throws IOException {
-        byte[] buffer = new byte[DEFAULT_BUFFER_SIZE];
-        long count = 0;
-        int n = 0;
-        while (-1 != (n = input.read(buffer))) {
-            output.write(buffer, 0, n);
-            count += n;
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.set(CONTENT_TYPE, getContentType(resourceName));
+
+            InputStream is = chm.getResourceAsStream(resourceName);
+            ResponseEntity response = new ResponseEntity(new InputStreamResource(is), responseHeaders, HttpStatus.OK);
+            return response;
+        } catch (FileNotFoundException ex) {
+            return new ResponseEntity("no resource: " + resourceName + " in chm document.", HttpStatus.NOT_FOUND);
         }
-        return count;
     }
 
     private String getContentType(String filename) {
