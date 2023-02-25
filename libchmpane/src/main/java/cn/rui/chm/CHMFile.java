@@ -37,7 +37,6 @@
  */
 package cn.rui.chm;
 
-import lombok.Getter;
 import lombok.NonNull;
 import lombok.experimental.UtilityClass;
 import lombok.extern.java.Log;
@@ -461,14 +460,6 @@ public final class CHMFile implements Closeable {
 			}
 			isNameList.read16(); // = null
 		}
-
-		ResourceEntry entrySharpSystem = resolveEntry(ResourceNames.SharpSystem);
-		if (entrySharpSystem == null) {
-			throw new DataFormatException("Missing " + ResourceNames.SharpSystem + " entry");
-		}
-		sharpSystem = new SharpSystem(getStreamFromEntry(entrySharpSystem));
-
-		readAll();
 	}
 
 	/**
@@ -512,11 +503,22 @@ public final class CHMFile implements Closeable {
 		return rawInputStream(contentOffset + entry.offset, entry.length);
 	}
 
-	@Getter
-	private final SharpSystem sharpSystem;
+	private final AtomicReference<Object> sharpSystem = new AtomicReference<Object>();
+	public SharpSystem getSharpSystem() throws IOException {
+		return Utils.lazyGet(sharpSystem, new Utils.SupplierWithException<SharpSystem, IOException>() {
+			@Override
+			public SharpSystem get() throws IOException {
+				ResourceEntry entrySharpSystem = resolveEntry(ResourceNames.SharpSystem);
+				if (entrySharpSystem == null) {
+					throw new DataFormatException("Missing " + ResourceNames.SharpSystem + " entry");
+				}
+				return new SharpSystem(getStreamFromEntry(entrySharpSystem));
+			}
+		});
+	}
 
-	public Charset getCharset() {
-		return sharpSystem.getCharset();
+	public Charset getCharset() throws IOException {
+		return getSharpSystem().getCharset();
 	}
 
 	public static String normalizeFilename(String filename) {
@@ -540,7 +542,7 @@ public final class CHMFile implements Closeable {
 		return Utils.lazyGet(contentsFileNameCache, new Utils.SupplierWithException<String, IOException>() {
 			@Override
 			public String get() throws IOException {
-				String name = sharpSystem.getProperty(SharpSystem.HhpOption.ContentsFile);
+				String name = getSharpSystem().getProperty(SharpSystem.HhpOption.ContentsFile);
 				if (name == null) {
 					for(String resource : getResources()) {
 						if (resource.toLowerCase().endsWith(".hhc")) {
@@ -569,7 +571,7 @@ public final class CHMFile implements Closeable {
 		return Utils.lazyGet(indexFileNameCache, new Utils.SupplierWithException<String, IOException>() {
 			@Override
 			public String get() throws IOException {
-				String name = sharpSystem.getProperty(SharpSystem.HhpOption.IndexFile);
+				String name = getSharpSystem().getProperty(SharpSystem.HhpOption.IndexFile);
 				if (name == null) {
 					for(String resource : getResources()) {
 						if (resource.toLowerCase().endsWith(".hhk")) {
@@ -592,8 +594,8 @@ public final class CHMFile implements Closeable {
 		});
 	}
 
-	public String getDefaultTopic() {
-		return sharpSystem.getProperty(SharpSystem.HhpOption.DefaultTopic);
+	public String getDefaultTopic() throws IOException {
+		return getSharpSystem().getProperty(SharpSystem.HhpOption.DefaultTopic);
 	}
 
 	/**
@@ -698,17 +700,12 @@ public final class CHMFile implements Closeable {
 					Inflater inflater = new Inflater(windowSize);
 
 					byte[] buf;
-					int pos;
-					int bytesLeft;
+					int posInBlock = 0;
+					int bytesLeftInBlock = 0;
 
 					@Override
 					public int available() throws IOException {
-						return bytesLeft; // not non-blocking available
-					}
-
-					@Override
-					public void close() throws IOException {
-						inflater = null;
+						return bytesLeftInBlock; // not non-blocking available
 					}
 
 					/**
@@ -740,14 +737,28 @@ public final class CHMFile implements Closeable {
 							if (buf == null) // allocate the buffer
 								buf = new byte[blockSize];
 							System.arraycopy(cache[blockNo % cache.length], 0, buf, 0, buf.length);
+							//buf = cache[blockNo % cache.length]; // 直接使用缓存, 被缓存丢弃没有问题, 问题出在被复用
 						}
 
-						// the start block has special pos value
-						pos = (blockNo == startBlockNo) ? startOffset : 0;
-						// the end block has special length
-						bytesLeft = (blockNo < startBlockNo) ? 0
-								: ((blockNo < endBlockNo) ? blockSize : endOffset);
-						bytesLeft -= pos;
+						if (blockNo < startBlockNo) {
+							// invalid blocks before startBlockNo
+							posInBlock = 0;
+							bytesLeftInBlock = 0;
+						} else {
+							if (blockNo == startBlockNo) {
+								// the start block has special pos value
+								posInBlock = startOffset;
+							} else {
+								posInBlock = 0;
+							}
+							if (blockNo == endBlockNo) {
+								// the end block has special length
+								bytesLeftInBlock = endOffset;
+							} else {
+								bytesLeftInBlock = blockSize;
+							}
+							bytesLeftInBlock -= posInBlock;
+						}
 
 						blockNo++;
 					}
@@ -755,17 +766,23 @@ public final class CHMFile implements Closeable {
 					@Override
 					public int read(byte[] b, int off, int len) throws IOException {
 
-						if ((bytesLeft <= 0) && (blockNo > endBlockNo)) {
-							return -1;    // no more data
+						if (blockNo > endBlockNo) {
+							// last block
+							if (bytesLeftInBlock <= 0) {
+								// read out
+								return -1; // no more data
+							}
+						} else if (bytesLeftInBlock <= 0) {
+							// not last block, invalid or read out
+							do {
+								readBlock(); // re-charge to next valid block
+							} while (blockNo <= startBlockNo);
 						}
 
-						while (bytesLeft <= 0)
-							readBlock(); // re-charge
-
-						int togo = Math.min(bytesLeft, len);
-						System.arraycopy(buf, pos, b, off, togo);
-						pos += togo;
-						bytesLeft -= togo;
+						int togo = Math.min(bytesLeftInBlock, len);
+						System.arraycopy(buf, posInBlock, b, off, togo);
+						posInBlock += togo;
+						bytesLeftInBlock -= togo;
 
 						return togo;
 					}
@@ -778,8 +795,8 @@ public final class CHMFile implements Closeable {
 
 					@Override
 					public long skip(long n) throws IOException {
-						log.warning("LZX skip happens: " + pos + "+ " + n);
-						pos += n;    // TODO n chould be negative, so do boundary checks!
+						log.warning("LZX skip happens: " + posInBlock + "+ " + n);
+						posInBlock += n;    // TODO n chould be negative, so do boundary checks!
 						return n;
 					}
 				};
@@ -830,7 +847,7 @@ public final class CHMFile implements Closeable {
 		try {
 			putLcid(values, lcidITSF, "LCID of building OS, in ITSF Header");
 			putLcid(values, lcidITSP, "LCID of Itss.Dll, in ITSP Header");
-			putLcid(values, sharpSystem.getLcid(), "LCID in " + ResourceNames.SharpSystem);
+			putLcid(values, getSharpSystem().getLcid(), "LCID in " + ResourceNames.SharpSystem);
 
 			ResourceEntry entryFIftiMain = resolveEntry(ResourceNames.DollarFIftiMain);
 			if (entryFIftiMain != null) {
@@ -849,7 +866,7 @@ public final class CHMFile implements Closeable {
 		return values;
 	}
 
-	public void readAll() {
+	public String testReadAll() {
 		log.info("begin file: " + file.getAbsolutePath());
 		byte[] b = new byte[1024];
 		try {
@@ -877,8 +894,11 @@ public final class CHMFile implements Closeable {
 			}
 			log.log(Level.INFO, "success file: {0} resourceSuccess:{1} resourceFailed:{2}",
 					new Object[]{file.getAbsoluteFile(), resourceSuccess, resourceFailed});
+			return MessageFormat.format("success file: {0} resourceSuccess:{1} resourceFailed:{2}",
+					file.getAbsoluteFile(), resourceSuccess, resourceFailed);
 		} catch (Exception ex) {
 			log.info("failed file: " + file.getAbsolutePath());
+			return "failed file: " + file.getAbsolutePath();
 		}
 	}
 
