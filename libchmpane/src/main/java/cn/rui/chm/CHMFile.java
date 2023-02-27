@@ -38,7 +38,6 @@
 package cn.rui.chm;
 
 import lombok.NonNull;
-import lombok.experimental.UtilityClass;
 import lombok.extern.java.Log;
 
 import java.io.*;
@@ -263,23 +262,13 @@ public final class CHMFile implements Closeable {
 		}
 	}
 
-	@UtilityClass
-	public class ResourceNames {
-		public final String NameList = "::DataSpace/NameList";
-		public final String LzxcControlData = "::DataSpace/Storage/MSCompressed/ControlData";
-		public final String LzxcContent ="::DataSpace/Storage/MSCompressed/Content";
-		public final String LzxcResetTable = "::DataSpace/Storage/MSCompressed/Transform/{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable";
-		public final String SharpSystem = "/#SYSTEM";
-		public final String DollarFIftiMain = "/$FIftiMain";
-	}
-
 	/**
 	 * Resovle entry by name, using cache and index
 	 * @param name not null
 	 * @return null if there is no entry called 'name'
 	 * @throws IOException
 	 */
-	private ResourceEntry resolveEntry(@NonNull String name) throws IOException {
+	public ResourceEntry resolveEntry(@NonNull String name) throws IOException {
 		ResourceEntry entry = entryCache.get(name);
 		if (entry == null && !isResourcesCompleted()) {
 			entry = searchChunk(rootIndexChunk, name);
@@ -811,7 +800,7 @@ public final class CHMFile implements Closeable {
 		}
 	}
 
-	static class ResourceEntry extends ResourceEntryKey {
+	public static class ResourceEntry extends ResourceEntryKey {
 		final int section;
 		final long offset;
 		final int length;
